@@ -1,0 +1,73 @@
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+ngrok.yml
+secrets/
+
+# --- Node / Extension build ---
+node_modules/
+extension/dist/
+extension/build/
+extension/workers/models/*.onnx
+extension/workers/models/*.bin
+*.crx
+*.pem
+.parcel-cache/
+.vite/
+
+# --- Python / Server ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pip-log.txt
+
+# --- Model weights / large downloads (never commit) ---
+*.gguf
+*.safetensors
+*.bin
+models/
+server/models/weights/
+.cache/huggingface/
+
+# --- Server state / session data ---
+server/state/*.sqlite
+server/state/*.db
+server/state/memory/*.json
+*.sqlite3
+
+# --- Colab / ngrok artifacts ---
+*.ipynb_checkpoints/
+ngrok
+nohup.out
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Fixture outputs / scratch (keep committed fixtures, ignore generated test output) ---
+fixtures/generated/
+tmp/
+scratch/
+
+# --- Coverage / test artifacts ---
+coverage/
+.nyc_output/
+htmlcov/
