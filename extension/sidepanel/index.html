@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iSIH Agent Sidepanel</title>
+  <style>
+    body {
+      width: 100%;
+      height: 100vh;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #111827;
+      color: #F9FAFB;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 1.2rem;
+      margin-top: 0;
+    }
+    .panel-content {
+      padding: 12px;
+      background: #1F2937;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      height: calc(100% - 50px);
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Agent Timeline</h1>
+  <div class="panel-content" id="timeline">
+    <p>Waiting for tasks...</p>
+    <!-- Future UI: Screenshot timeline UI, undo/rollback -->
+  </div>
+</body>
+</html>

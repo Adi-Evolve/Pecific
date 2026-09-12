@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BVAgent</title>
+  <style>
+    :root {
+      --bg-main: #0B0E14;
+      --bg-panel: #131722;
+      --bg-card: #1C2130;
+      --accent: #5D3FD3; /* Deep purple/blue */
+      --accent-hover: #4B32A8;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --border: #2A3142;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      width: 400px;
+      min-height: 500px;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      padding: 16px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #7C3AED, #3B82F6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: white;
+    }
+
+    .logo-text h1 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .logo-text p {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .icon-btn:hover {
+      background-color: #262D3D;
+      color: var(--text-main);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .tab.active {
+      color: var(--accent);
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background-color: var(--accent);
+      border-radius: 2px 2px 0 0;
+    }
+
+    /* Idle State UI */
+    #view-idle {
+      display: block;
+    }
+    #view-running {
+      display: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: rgba(93, 63, 211, 0.15);
+      color: #8B5CF6;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background-color: #8B5CF6;
+      border-radius: 50%;
+    }
+
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    .input-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .prompt-area {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      position: relative;
+    }
+    .prompt-area:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 13px;
+      resize: none;
+      height: 60px;
+      outline: none;
+    }
+
+    .info-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-run {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      color: white;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+    .btn-run:hover {
+      opacity: 0.9;
+    }
+
+    /* Running State UI */
+    .running-header {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .running-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .running-title-row h2 {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .running-title-row h2::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background-color: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .step-badge {
+      background-color: rgba(93, 63, 211, 0.2);
+      color: #A78BFA;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .running-query {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .progress-section {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .progress-percent {
+      color: var(--accent);
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 6px;
+      background-color: var(--bg-panel);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 15%;
+      background: linear-gradient(90deg, #5D3FD3, #A78BFA);
+      border-radius: 3px;
+    }
+
+    .plan-section {
+      margin-bottom: 16px;
+    }
+    .plan-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background-color: var(--bg-panel);
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+    .task-item.active {
+      background-color: rgba(93, 63, 211, 0.1);
+      border-color: rgba(93, 63, 211, 0.3);
+    }
+
+    .task-desc {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    
+    .task-desc svg {
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+    }
+    .task-item.active .task-desc {
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .task-item.active .task-desc svg {
+      color: var(--warning);
+    }
+
+    .task-type {
+      background-color: rgba(93, 63, 211, 0.15);
+      color: #A78BFA;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .status-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: rgba(93, 63, 211, 0.1);
+      border: 1px solid rgba(93, 63, 211, 0.3);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .status-text {
+      font-size: 12px;
+      font-family: monospace;
+      color: #A78BFA;
+    }
+    
+    .status-label {
+      background-color: var(--accent);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    .btn-stop {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-stop:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
+      </div>
+      <div class="logo-text">
+        <h1>BVAgent</h1>
+        <p>Autonomous Browser AI</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- Settings -->
+      <button class="icon-btn" id="btn-settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
+      <!-- Lock (Privacy) -->
+      <button class="icon-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active">
+      <svg style="width:12px; height:12px; display:inline; margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+      Agent
+    </div>
+    <div class="tab">
+      <svg style="width:12px; height:12px; display:inline; margin-right:4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+      Form Fill
+    </div>
+  </div>
+
+  <!-- STATE: IDLE -->
+  <div id="view-idle">
+    <div class="badge">AUTONOMOUS AGENT</div>
+    
+    <div class="input-group">
+      <span class="input-label">WHAT SHOULD THE AGENT DO?</span>
+      <div class="prompt-area">
+        <textarea id="prompt-input" placeholder="e.g. search for plastic gloves on flipkart under 200 rupees" spellcheck="false">search for plastic gloves on flipkart under 200 rupees</textarea>
+      </div>
+    </div>
+
+    <div class="info-text">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      Agent navigates, clicks, fills forms, and logs in — all automatically.
+    </div>
+
+    <button class="btn-run" id="btn-run">
+      <svg style="width:14px; height:14px;" fill="white" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>
+      Run Agent
+    </button>
+  </div>
+
+  <!-- STATE: RUNNING -->
+  <div id="view-running">
+    <div class="running-header">
+      <div class="running-title-row">
+        <h2>Autonomous Agent Running</h2>
+        <span class="step-badge">Step 1 (~5)</span>
+      </div>
+      <div class="running-query" id="display-query">search for plastic gloves on flipkart under 200 rupees</div>
+    </div>
+
+    <div class="progress-section">
+      <div class="progress-header">
+        <span>PROCESS COMPLETION</span>
+        <span class="progress-percent">15%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill"></div>
+      </div>
+    </div>
+
+    <div class="plan-section">
+      <div class="plan-title">EXECUTION PLAN (SYNCHRONIZED TASKS)</div>
+      <div class="task-list">
+        
+        <!-- Active Task -->
+        <div class="task-item active">
+          <div class="task-desc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            Navigate to Flipkart and load main page
+          </div>
+          <div class="task-type">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            DOM
+          </div>
+        </div>
+
+        <!-- Pending Task -->
+        <div class="task-item">
+          <div class="task-desc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+            Browse or search for 'search for plastic gloves on flipkart un'
+          </div>
+          <div class="task-type">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            DOM
+          </div>
+        </div>
+
+        <!-- Pending Task -->
+        <div class="task-item">
+          <div class="task-desc">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+            Search results displayed — extract key information and complete
+          </div>
+          <div class="task-type">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            DOM
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="status-footer">
+      <div class="status-text">
+        <span class="status-label">STATUS</span>
+        Step 1: Navigating... waiting for page to load
+      </div>
+    </div>
+
+    <button class="btn-stop" id="btn-stop">
+      <svg style="width:10px; height:10px; display:inline; margin-right:4px;" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18"></rect></svg>
+      Stop Agent
+    </button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
