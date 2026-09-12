@@ -18,8 +18,13 @@ This running document records architectural decisions, completed work, active de
 - **Phase 1 & 2 (Extension Shell & Core Privacy):** Complete ✅.
   - Dev 1 completed MV3 `manifest.json`, `popup/`, `sidepanel/`, `service-worker.js`, Approval Dialog UI, and Pecific Light/Dark theme redesign.
   - Dev 3 completed 4-stage PII detection (`regex.js`), DOM structural invariance, server-facing `token_manifest`, and client-only in-memory vault.
-- **Automated Tests:** 109/109 tests passing (100% pass rate).
-- **Phase 3 (Client-Side Integration):** In progress 🔄. Preparing WebSocket client streaming and action execution loop.
+- **Phase 3 (Client-Side Integration & 3-Line Privacy Helper):** Complete ✅.
+  - Exposed clean `extension/workers/privacy-client.js` with 3-line helper module (`sanitizeDOMSnapshot`).
+  - Integrated `extension/service-worker.js` to automatically sanitize DOM snapshots and verify zero egress.
+  - Added Indian SPII detection (Voter ID, DL, EPFO UAN, Vehicle RC, Bank Account) for SIH PS26171.
+- **Phase 6 (Redaction Telemetry Hook):** Complete ✅.
+  - Interactive Privacy Vault Modal & Telemetry Dashboard in popup (`#modal-privacy-vault`) and live protection card in sidepanel.
+- **Automated Tests:** 149/149 tests passing across 5 suites (100% pass rate).
 
 ---
 

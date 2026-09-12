@@ -355,10 +355,15 @@ test('Correctly categorizes PII severity tiers (SPII vs PII vs CONTEXTUAL)', () 
   assertEqual(getPIICategory('PAN'), 'SPII');
   assertEqual(getPIICategory('CARD'), 'SPII');
   assertEqual(getPIICategory('PASSWORD_FIELD'), 'SPII');
+  assertEqual(getPIICategory('VOTER_ID'), 'SPII');
+  assertEqual(getPIICategory('DL'), 'SPII');
+  assertEqual(getPIICategory('EPFO_UAN'), 'SPII');
+  assertEqual(getPIICategory('BANK_ACCOUNT'), 'SPII');
   assertEqual(getPIICategory('EMAIL'), 'PII');
   assertEqual(getPIICategory('PHONE'), 'PII');
   assertEqual(getPIICategory('NAME'), 'PII');
   assertEqual(getPIICategory('UPI'), 'PII');
+  assertEqual(getPIICategory('VEHICLE_RC'), 'PII');
   assertEqual(getPIICategory('DOB'), 'CONTEXTUAL');
   assertEqual(getPIICategory('IFSC'), 'CONTEXTUAL');
 });

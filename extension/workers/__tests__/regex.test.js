@@ -268,6 +268,68 @@ test('Detects password input type', () => {
   assertIncludes(matches, 'PASSWORD_FIELD', '[hidden]');
 });
 
+// ── Indian SPII Tests (SIH PS26171) ────────────────────────────────────────
+
+console.log('\n🗳️ Indian Voter ID (EPIC) Detection:');
+
+test('Detects standard Voter ID', () => {
+  const matches = scanRegexPII('Voter card number ABC1234567');
+  assertIncludes(matches, 'VOTER_ID', 'ABC1234567');
+});
+
+test('Detects Voter ID with slash separator', () => {
+  const matches = scanRegexPII('EPIC: XYZ/9876543');
+  assertIncludes(matches, 'VOTER_ID', 'XYZ/9876543');
+});
+
+console.log('\n🚗 Indian Driving License (DL) Detection:');
+
+test('Detects standard Parivahan Driving License format', () => {
+  const matches = scanRegexPII('Driving License DL-0420110012345 issued in Delhi');
+  assertIncludes(matches, 'DL', 'DL-0420110012345');
+});
+
+test('Detects Driving License with state code and spaces', () => {
+  const matches = scanRegexPII('DL Number: MH02 20180012345', { nearbyLabels: 'Driving Licence' });
+  assertIncludes(matches, 'DL', 'MH02 20180012345');
+});
+
+console.log('\n🏢 EPFO UAN Detection:');
+
+test('Detects EPFO UAN with UAN context label', () => {
+  const matches = scanRegexPII('Your UAN is 101234567890', { nearbyLabels: 'EPFO UAN Number' });
+  assertIncludes(matches, 'EPFO_UAN', '101234567890');
+});
+
+test('Skips 12-digit number without UAN label (avoiding order ID collisions)', () => {
+  const matches = scanRegexPII('Shipment barcode 101234567890', { nearbyLabels: 'Package tracking' });
+  assertNotIncludes(matches, 'EPFO_UAN');
+});
+
+console.log('\n🚙 Vehicle Registration (RC) Detection:');
+
+test('Detects Indian vehicle plate format', () => {
+  const matches = scanRegexPII('Vehicle No: DL 01 AB 1234', { nearbyLabels: 'Vehicle RC' });
+  assertIncludes(matches, 'VEHICLE_RC', 'DL 01 AB 1234');
+});
+
+test('Detects Bharat Series (BH) vehicle plate', () => {
+  const matches = scanRegexPII('Registered Car: 22 BH 1234 AA');
+  assertIncludes(matches, 'VEHICLE_RC', '22 BH 1234 AA');
+});
+
+console.log('\n🏦 Indian Bank Account Number Detection:');
+
+test('Detects Bank Account with account label', () => {
+  const matches = scanRegexPII('A/C No: 112345678901', { nearbyLabels: 'Savings Bank Account Number' });
+  assertIncludes(matches, 'BANK_ACCOUNT', '112345678901');
+});
+
+test('Skips bank account digits without account label', () => {
+  const matches = scanRegexPII('Invoice serial 112345678901', { nearbyLabels: 'Invoice ID' });
+  assertNotIncludes(matches, 'BANK_ACCOUNT');
+});
+
 // ── False Positive Tests ────────────────────────────────────────────────────
 
 console.log('\n🚫 False Positive Prevention:');

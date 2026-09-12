@@ -288,6 +288,198 @@
       background-color: var(--bg-surface);
     }
 
+    /* Privacy Status Badge */
+    .privacy-status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .privacy-status-badge:hover {
+      border-color: var(--text-muted);
+    }
+    .privacy-status-badge .badge-text {
+      flex: 1;
+    }
+    .privacy-status-badge .badge-link {
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: underline;
+      color: var(--text-muted);
+    }
+
+    /* Modal: Privacy Vault Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .modal-card {
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-height: 94vh;
+      overflow-y: auto;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .modal-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-title-row h2 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .modal-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .vault-banner {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .banner-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #10B981;
+      margin-bottom: 3px;
+    }
+    .banner-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .metric-card.metric-spii {
+      border-left: 3px solid #EF4444;
+    }
+    .metric-card.metric-pii {
+      border-left: 3px solid #3B82F6;
+    }
+    .metric-card.metric-ctx {
+      border-left: 3px solid #F59E0B;
+    }
+    .metric-card.metric-leaked {
+      border-left: 3px solid #10B981;
+    }
+    .metric-num {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .metric-desc {
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .token-list-container {
+      max-height: 120px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--bg-surface);
+      margin-bottom: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .token-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-main);
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .token-badge {
+      font-family: monospace;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .token-cat {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .token-cat.SPII { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+    .token-cat.PII { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+    .token-cat.CONTEXTUAL { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+    .token-empty {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 12px 0;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-actions button {
+      flex: 1;
+    }
+
   </style>
 </head>
 <body>
@@ -328,6 +520,13 @@
         <button class="btn-primary" id="btn-run">Run</button>
       </div>
     </div>
+
+    <!-- Live Zero-Egress Status Badge -->
+    <div class="privacy-status-badge" id="badge-privacy-idle">
+      <span class="shield-icon">🛡️</span>
+      <span class="badge-text"><strong>Zero-Egress Guard Active</strong> • <span id="idle-masked-count">0</span> PII Masked</span>
+      <span class="badge-link">View Vault</span>
+    </div>
   </div>
 
   <!-- STATE: RUNNING -->
@@ -360,7 +559,69 @@
       </div>
     </div>
 
+    <!-- Live Running Privacy Badge -->
+    <div class="privacy-status-badge" id="badge-privacy-running" style="margin-bottom: 16px;">
+      <span class="shield-icon">🛡️</span>
+      <span class="badge-text"><strong>Active Shield</strong> • <span id="running-masked-count">0</span> Tokens in Vault</span>
+      <span class="badge-link">Inspect</span>
+    </div>
+
     <button class="btn-secondary" id="btn-stop">Stop</button>
+  </div>
+
+  <!-- Modal: Privacy Vault & Redaction Telemetry Dashboard -->
+  <div id="modal-privacy-vault" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span style="font-size: 16px;">🛡️</span>
+          <h2>Zero-Egress Privacy Vault</h2>
+        </div>
+        <button class="icon-btn" id="btn-close-vault" title="Close">✕</button>
+      </div>
+      <div class="modal-sub">DPDP Act 2023 Compliant • On-Device Isolation</div>
+
+      <div class="vault-banner">
+        <div class="banner-badge">
+          <span class="status-dot"></span>
+          <span>Zero Plaintext Egress Verified</span>
+        </div>
+        <div class="banner-sub">Client credentials and SPII are substituted with tokens before reaching server LLM.</div>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="metric-card metric-spii">
+          <div class="metric-num" id="stat-spii-count">0</div>
+          <div class="metric-label">SPII Masked</div>
+          <div class="metric-desc">Aadhaar, PAN, DL, Passwords</div>
+        </div>
+        <div class="metric-card metric-pii">
+          <div class="metric-num" id="stat-pii-count">0</div>
+          <div class="metric-label">PII Masked</div>
+          <div class="metric-desc">Email, Phone, Name, UPI</div>
+        </div>
+        <div class="metric-card metric-ctx">
+          <div class="metric-num" id="stat-ctx-count">0</div>
+          <div class="metric-label">Contextual</div>
+          <div class="metric-desc">Address, IFSC, DOB, IP</div>
+        </div>
+        <div class="metric-card metric-leaked">
+          <div class="metric-num" id="stat-leak-count">0</div>
+          <div class="metric-label">Secrets Leaked</div>
+          <div class="metric-desc">Verified 0 Raw Egress</div>
+        </div>
+      </div>
+
+      <div class="section-title">Active Token Manifest</div>
+      <div class="token-list-container" id="token-manifest-list">
+        <div class="token-empty">No active tokens yet. Run a query or scan a page to populate the vault.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btn-reset-vault">Reset Vault</button>
+        <button class="btn-primary" id="btn-done-vault">Done</button>
+      </div>
+    </div>
   </div>
 
   <script src="popup.js"></script>
