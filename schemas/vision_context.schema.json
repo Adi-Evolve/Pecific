@@ -1,104 +1,41 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "VisionContext",
-  "description": "Output of on-device vision worker (TinyViT/MobileViT + BlazeFace) capturing visual page state and layout without raw personal data",
+  "$id": "vision_context.schema.json",
   "type": "object",
-  "required": ["screen_type", "confidence"],
+  "required": ["screen_type", "confidence", "faces_detected", "pii_regions", "backend", "processing_ms"],
   "properties": {
     "screen_type": {
       "type": "string",
-      "description": "Semantic screen classification determined by on-device ViT",
-      "enum": [
-        "search_results",
-        "product_detail",
-        "checkout_cart",
-        "login_auth",
-        "form_application",
-        "dashboard_home",
-        "canvas_workspace",
-        "captcha_challenge",
-        "modal_overlay",
-        "error_page",
-        "unknown"
-      ]
+      "enum": ["search_results", "product_page", "checkout", "login_page", "cart", "form", "unknown"]
     },
-    "confidence": {
-      "type": "number",
-      "description": "Classification confidence score (0.0 - 1.0)",
-      "minimum": 0.0,
-      "maximum": 1.0
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "confidence_basis": {
+      "type": "string",
+      "enum": ["mobilevit_image_class", "screen_class"]
     },
-    "layout": {
-      "type": "object",
-      "description": "High-level spatial properties cross-referenced with DOM",
-      "properties": {
-        "visual_density": {
-          "type": "string",
-          "enum": ["low", "medium", "high"]
-        },
-        "has_active_modal": {
-          "type": "boolean"
-        },
-        "has_sticky_footer": {
-          "type": "boolean"
-        },
-        "canvas_heavy": {
-          "type": "boolean",
-          "description": "True when page uses Canvas/WebGL (DOM-sparse, requires vision-based actions)"
+    "faces_detected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bbox", "confidence"],
+        "properties": {
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
         }
       }
     },
-    "detected_regions": {
+    "pii_regions": {
       "type": "array",
-      "description": "Macro bounding boxes [x, y, width, height] for structural landmarks",
       "items": {
         "type": "object",
         "required": ["type", "bbox"],
         "properties": {
-          "type": { "type": "string" },
-          "bbox": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4
-          },
+          "type": { "type": "string", "enum": ["face", "text_pii"] },
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
           "label": { "type": "string" }
         }
       }
     },
-    "faces_detected": {
-      "type": "array",
-      "description": "Bounding boxes of faces detected and blurred locally on-device",
-      "items": {
-        "type": "object",
-        "required": ["bbox"],
-        "properties": {
-          "bbox": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4
-          },
-          "confidence": { "type": "number" }
-        }
-      }
-    },
-    "visual_pii_regions": {
-      "type": "array",
-      "description": "Visual bounding boxes of masked sensitive fields (IDs, cards, addresses)",
-      "items": {
-        "type": "object",
-        "required": ["type", "bbox"],
-        "properties": {
-          "type": { "type": "string" },
-          "bbox": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4
-          }
-        }
-      }
-    }
+    "backend": { "type": "string", "enum": ["webgpu", "wasm"] },
+    "processing_ms": { "type": "number" }
   }
 }

@@ -77,6 +77,10 @@ This running document records architectural decisions, completed work, active de
 5. **Extension Shell & UI (Dev 1 Integration):**
    - `manifest.json`, `popup/`, `sidepanel/`, `service-worker.js`.
    - Pecific Light theme with Dark theme toggle and clean minimalist layout.
+6. **Dev 4 | Phase 0: **
+   - Defined the vision_context and vault_manifest contracts, added representative fixtures, and established the vision, vault, and tab-management integration boundaries.
+7. **Dev 4 | Phases 1–2:**
+   - Implemented the vision worker with BlazeFace and MobileViT screen classification, merged outputs into the vision_context format, and established the AES-256-GCM encrypted vault foundation using Web Crypto API.
 
 ---
 
