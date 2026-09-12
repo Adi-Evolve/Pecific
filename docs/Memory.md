@@ -18,12 +18,11 @@ This running document records architectural decisions, completed work, active de
 - **Phase 1 & 2 (Extension Shell & Core Privacy):** Complete ✅.
   - Dev 1 completed MV3 `manifest.json`, `popup/`, `sidepanel/`, `service-worker.js`, Approval Dialog UI, and Pecific Light/Dark theme redesign.
   - Dev 3 completed 4-stage PII detection (`regex.js`), DOM structural invariance, server-facing `token_manifest`, and client-only in-memory vault.
-- **Phase 3 (Client-Side Integration & 3-Line Privacy Helper):** Complete ✅.
-  - Exposed clean `extension/workers/privacy-client.js` with 3-line helper module (`sanitizeDOMSnapshot`).
-  - Integrated `extension/service-worker.js` to automatically capture active-tab snapshots, sanitize DOM, and strictly enforce fail-closed zero egress.
-  - Hardened authorization on `RESOLVE_TOKEN` and `RESTORE_TEXT` requiring extension origin and session ID match.
-  - Added Indian SPII detection (Voter ID, DL, EPFO UAN, Vehicle RC, Bank Account) with Bharat-series plate support and context disambiguation.
-  - Achieved true diff-only incremental DOM scanning with cross-step token stability and element match caching.
+- **Phase 3 (Client-Side Integration & Wiring):** In Progress 🔄.
+  - **Dev 3:** Exposed clean `extension/workers/privacy-client.js` with 3-line helper module (`sanitizeDOMSnapshot`). Added Indian SPII detection and achieved true diff-only incremental DOM scanning.
+  - **Dev 2:** Pushed `content-script.js` and `dom-extractor.js` for DOM extraction.
+  - **Dev 4:** Pushed `vision-worker.js` and ONNX models for visual perception.
+  - **Dev 1 (Current Focus):** Wiring `service-worker.js` to coordinate query -> DOM snapshot (Dev 2) -> vision analysis (Dev 4) -> privacy worker (Dev 3) -> sanitized payload.
 - **Phase 6 (Redaction Telemetry Hook):** Complete ✅.
   - Interactive Privacy Vault Modal & Telemetry Dashboard in popup (`#modal-privacy-vault`) and live protection card in sidepanel.
   - Keyboard-accessible vault triggers (`role="button"`, `tabindex="0"`, Enter/Space handlers).
@@ -86,9 +85,13 @@ This running document records architectural decisions, completed work, active de
 
 ## 5. Next Steps & Pending Roadmap 📋
 
-1. **Phase 3 Client-Side Module Wiring:**
-   - Wire `service-worker.js` to coordinate query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
-2. **Phase 4 WebSocket Client Integration:**
-   - Stream sanitized payload over WebSocket to FastAPI server (`/ws/browser-agent`).
-3. **Phase 5 Action Rehydration & Execution:**
-   - Resolve tokens locally from client vault before typing into fields, and trigger approval dialogs for high-risk actions.
+1. **Phase 3 Client-Side Module Wiring (Completed ✅):**
+   - Wired `service-worker.js` to coordinate query -> DOM snapshot (Dev 2) -> vision analysis (Dev 4) -> privacy worker (Dev 3) -> sanitized payload.
+2. **Phase 4 WebSocket Client Integration (Completed ✅):**
+   - Streamed sanitized payload over WebSocket to FastAPI server (`/ws/browser-agent`) and implemented incoming action routing.
+3. **Phase 5 Action Rehydration & Approval Flow (Completed ✅):**
+   - Intercept high-risk `APPROVAL_REQUIRED` actions via UI, and resolve tokens locally from client vault before typing into fields via Dev 2.
+4. **Phase 6 Advanced UX Polish (Completed ✅):**
+   - Built Screenshot timeline UI, progress bars, Undo controls, and keyboard shortcuts (`Ctrl+Shift+X`).
+5. **Phase 7 End-to-End Orchestration (Current Focus 🔄):**
+   - System integration testing and executing the SIH Benchmarks (Recruitment, E-Commerce, OTP Verification).

@@ -14,6 +14,118 @@ console.log("iSIH Agent Service Worker Registered with PrivacyLens Engine.");
 
 let currentSessionId = 'session_' + Date.now();
 
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-sidepanel') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0 && tabs[0].id) {
+        chrome.sidePanel.open({ windowId: tabs[0].windowId }).catch(console.error);
+      }
+    });
+  }
+});
+
+// ─── WebSocket Client Integration (Phase 4) ──────────────────────────────────
+let ws = null;
+const WS_URL = 'ws://localhost:8000/ws/browser-agent';
+
+function connectWebSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  
+  console.log('[SW] Connecting to WebSocket:', WS_URL);
+  ws = new WebSocket(WS_URL);
+  
+  ws.onopen = () => {
+    console.log('[SW] WebSocket connected to server.');
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      console.log('[SW] Received from Server:', msg.type);
+      handleServerMessage(msg);
+    } catch (e) {
+      console.error('[SW] Failed to parse server message:', e);
+    }
+  };
+  
+  ws.onclose = () => {
+    console.log('[SW] WebSocket closed. Will reconnect on next action.');
+    ws = null;
+  };
+  
+  ws.onerror = (err) => {
+    console.error('[SW] WebSocket error:', err);
+  };
+}
+
+function sendToServer(message) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    connectWebSocket();
+    // Wait briefly for connection
+    setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      } else {
+        console.warn('[SW] WebSocket not open, dropping message:', message.type);
+      }
+    }, 1000);
+  } else {
+    ws.send(JSON.stringify(message));
+  }
+}
+
+async function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'PLAN':
+      console.log('[SW] New Plan received:', msg.payload?.goal);
+      chrome.runtime.sendMessage({
+         type: 'UPDATE_ETA',
+         payload: { goal: msg.payload?.goal, steps: msg.payload?.plan?.total_steps || 3 }
+      }).catch(()=>{});
+      break;
+    case 'NEXT_STEP':
+      console.log('[SW] Executing Next Step:', msg.payload?.step?.action);
+      // Route to Dev 2 content script
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            type: 'EXECUTE_ACTION',
+            payload: msg.payload
+          });
+        }
+      });
+      break;
+    case 'APPROVAL_REQUIRED':
+      console.log('[SW] Approval Required for:', msg.payload?.description);
+      chrome.runtime.sendMessage({
+        type: 'APPROVAL_REQUIRED',
+        payload: msg.payload
+      }).catch(err => {
+        console.warn('[SW] Could not broadcast APPROVAL_REQUIRED to UI:', err);
+      });
+      break;
+    case 'TASK_COMPLETE':
+      console.log('[SW] Task Complete:', msg.payload?.summary);
+      chrome.notifications.create({
+        type: 'basic',
+        title: 'Pecific Agent',
+        message: 'Task Complete: ' + (msg.payload?.summary || 'Goal achieved.'),
+        iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+      });
+      break;
+    default:
+      console.warn('[SW] Unknown server message type:', msg.type);
+  }
+}
+
+// Ensure connection is active
+connectWebSocket();
+
+
 // ─── Broadcast Telemetry to Popup & Sidepanel ─────────────────────────────────
 function broadcastTelemetry(telemetry) {
   try {
@@ -76,45 +188,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   }
                 }
 
-                // Interactive DOM elements extraction
-                const [injectionResult] = await chrome.scripting.executeScript({
-                  target: { tabId: activeTab.id },
-                  func: () => {
-                    const elements = [];
-                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-                    let node;
-                    let idx = 0;
-                    while ((node = walker.nextNode())) {
-                      const tag = node.tagName;
-                      const isInteractive = ['INPUT', 'BUTTON', 'A', 'SELECT', 'TEXTAREA'].includes(tag);
-                      const text = (node.innerText || node.textContent || '').trim();
-                      const val = node.value || '';
-                      if (isInteractive || (text && text.length > 0 && node.children.length === 0)) {
-                        const rect = node.getBoundingClientRect();
-                        elements.push({
-                          id: node.id || `el_${idx++}`,
-                          tag,
-                          type: node.type || undefined,
-                          text: text.slice(0, 500),
-                          value: val.slice(0, 500),
-                          placeholder: node.placeholder || undefined,
-                          nearbyLabels: node.getAttribute('aria-label') || node.getAttribute('title') || undefined,
-                          coordinates: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
-                          selector: node.id ? `#${node.id}` : tag.toLowerCase()
-                        });
-                      }
-                    }
-                    return {
-                      url: window.location.href,
-                      title: document.title,
-                      viewport: { width: window.innerWidth, height: window.innerHeight },
-                      elements_count: elements.length,
-                      elements
-                    };
+                // Interactive DOM extraction via Dev 2's content script
+                try {
+                  const response = await chrome.tabs.sendMessage(activeTab.id, { type: 'REQUEST_DOM_SNAPSHOT' });
+                  if (response && response.ok) {
+                    rawDOM = response.snapshot;
+                  } else {
+                    console.warn('[SW] Dev 2 content script failed or returned false:', response?.error);
                   }
-                });
-                if (injectionResult?.result) {
-                  rawDOM = injectionResult.result;
+                } catch (e) {
+                  console.warn('[SW] Could not reach content script (Dev 2):', e.message);
                 }
               }
             } catch (err) {
@@ -132,10 +215,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             };
           }
 
+          // 1.5 Dev 4 Vision Analysis for Face Bounding Boxes
+          let faceBBs = [];
+          if (screenshot) {
+            try {
+              const res = await fetch(screenshot);
+              const blob = await res.blob();
+              if (!self.visionWorker) {
+                self.visionWorker = new Worker('workers/vision-worker.js');
+                self.visionWorker.postMessage({
+                  type: 'INIT',
+                  faceModelPath: 'models/blazeface.onnx',
+                  screenModelPath: 'models/mobilevit_xxs.onnx'
+                });
+              }
+              const visionContext = await new Promise((resolve) => {
+                const listener = (e) => {
+                  if (e.data.type === 'DETECT_OK' || e.data.type === 'ANALYZE_SCREEN_OK') {
+                    self.visionWorker.removeEventListener('message', listener);
+                    resolve(e.data);
+                  } else if (e.data.type && e.data.type.endsWith('_FAIL')) {
+                    self.visionWorker.removeEventListener('message', listener);
+                    resolve(null);
+                  }
+                };
+                self.visionWorker.addEventListener('message', listener);
+                self.visionWorker.postMessage({ type: 'ANALYZE_SCREEN', imageData: blob });
+              });
+              
+              if (visionContext && visionContext.vision_context?.faces_detected) {
+                faceBBs = visionContext.vision_context.faces_detected.map(f => f.bbox);
+              }
+            } catch (err) {
+              console.warn('[SW] Vision Analysis failed:', err.message);
+            }
+          }
+
           // 2. Execute 3-line privacy helper to redact DOM & construct on-device vault
           const privacyResult = await sanitizeDOMSnapshot(rawDOM, screenshot, {
             sessionId: currentSessionId,
             verifyEgress: true,
+            faceBBs: faceBBs
           });
 
           // 3. Broadcast updated privacy telemetry to UI dashboard (Popup + Sidepanel)
@@ -171,6 +291,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             telemetry: privacyResult.telemetry,
             zeroEgressProof: privacyResult.zeroEgressProof,
           });
+
+          // 6. Transmit to Backend via WebSocket (Phase 4)
+          console.log('[SW] Transmitting USER_QUERY and STEP_RESULT to server...');
+          
+          sendToServer({
+            type: 'USER_QUERY',
+            session_id: currentSessionId,
+            payload: {
+              query: message.payload?.query,
+              url: rawDOM.url,
+              viewport: rawDOM.viewport
+            }
+          });
+
+          sendToServer({
+            type: 'STEP_RESULT',
+            session_id: currentSessionId,
+            payload: {
+              success: true,
+              sanitized_dom: privacyResult.sanitizedDOM,
+              vault_manifest: privacyResult.tokenManifest,
+              redacted_screenshot: privacyResult.redactedScreenshot || null
+            }
+          });
+          
+          chrome.runtime.sendMessage({
+            type: 'RENDER_TIMELINE_STEP',
+            payload: {
+              title: message.payload?.action || 'Extracted Page Context',
+              detail: `Masked ${privacyResult.privacyStats?.totalMasked || 0} tokens in this step.`,
+              screenshot: privacyResult.redactedScreenshot || null
+            }
+          }).catch(()=>{});
           break;
         }
 
@@ -231,6 +384,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'APPROVAL_RESPONSE': {
           console.log("Routing APPROVAL_RESPONSE", message.payload);
+          sendToServer({
+            type: 'APPROVAL_RESPONSE',
+            session_id: currentSessionId,
+            payload: message.payload
+          });
+          sendResponse({ success: true, status: "sent" });
+          break;
+        }
+
+        case 'UNDO_ACTION': {
+          console.log("Routing UNDO_ACTION");
+          sendToServer({
+            type: 'UNDO_ACTION',
+            session_id: currentSessionId,
+            payload: {}
+          });
           sendResponse({ success: true, status: "sent" });
           break;
         }

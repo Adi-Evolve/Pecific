@@ -96,6 +96,82 @@
       font-size: 0.75rem;
       color: #9CA3AF;
     }
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(2px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .modal-card {
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      width: 100%;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .modal-header h2 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      margin-top: 0;
+    }
+    .modal-body {
+      margin-bottom: 16px;
+    }
+    .modal-body p {
+      font-size: 0.85rem;
+      color: #D1D5DB;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .risk-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .risk-safe { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+    .risk-caution { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+    .risk-critical { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+    
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-primary {
+      flex: 1;
+      background: #10B981;
+      color: #111827;
+      border: none;
+      padding: 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      flex: 1;
+      background: transparent;
+      color: #F9FAFB;
+      border: 1px solid #374151;
+      padding: 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #059669; }
+    .btn-secondary:hover { background: #374151; }
   </style>
 </head>
 <body>
@@ -131,9 +207,35 @@
   <div class="panel-content" id="timeline">
     <div class="timeline-item">
       <div class="timeline-title">Privacy Engine Initialized</div>
-      <div class="timeline-detail">On-device vault active. Indian SPII (Aadhaar, PAN, DL, Voter ID, UAN) protected.</div>
+      <div class="timeline-detail">On-device vault active. Indian SPII protected.</div>
     </div>
-    <p style="color: #9CA3AF; font-size: 0.8rem; text-align: center; margin-top: 16px;">Waiting for user tasks...</p>
+  </div>
+
+  <div style="display:flex; justify-content: space-between; align-items:center;">
+     <div style="flex:1;">
+        <div style="font-size:0.75rem; color:#9CA3AF; margin-bottom:4px;" id="eta-label">ETA: Waiting for task...</div>
+        <div style="width:100%; height:4px; background:#374151; border-radius:2px;">
+           <div id="progress-fill" style="width:0%; height:100%; background:#10B981; border-radius:2px; transition: width 0.3s;"></div>
+        </div>
+     </div>
+     <button id="btn-undo" class="btn-secondary" style="margin-left:12px; padding:6px 12px; font-size:0.75rem; flex:initial; width:auto;">Undo Step</button>
+  </div>
+
+  <!-- Approval Modal (Phase 5) -->
+  <div id="modal-approval" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="approval-title">Approval Required</h2>
+      </div>
+      <div class="modal-body">
+        <div id="approval-risk-badge" class="risk-badge">RISK LEVEL</div>
+        <p id="approval-description">Description goes here...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-deny" class="btn-secondary">Deny</button>
+        <button id="btn-approve" class="btn-primary">Approve</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -158,14 +260,87 @@
       });
     } catch (e) {}
 
+    let currentApprovalActionId = null;
+
     // Listen for live updates
     if (chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((msg) => {
         if (msg?.type === 'PRIVACY_TELEMETRY_UPDATED' && msg.payload) {
           updateSidepanelTelemetry(msg.payload);
+        } else if (msg?.type === 'APPROVAL_REQUIRED' && msg.payload) {
+          showApprovalModal(msg.payload);
+        } else if (msg?.type === 'RENDER_TIMELINE_STEP' && msg.payload) {
+          addTimelineStep(msg.payload);
+        } else if (msg?.type === 'UPDATE_ETA' && msg.payload) {
+          document.getElementById('eta-label').textContent = `ETA: ${msg.payload.steps * 2}s (Planning ${msg.payload.steps} steps)`;
+          document.getElementById('progress-fill').style.width = '15%';
         }
       });
     }
+
+    function addTimelineStep(payload) {
+      const timeline = document.getElementById('timeline');
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      
+      let imgHtml = '';
+      if (payload.screenshot) {
+         imgHtml = `<img src="${payload.screenshot}" style="max-width:100%; margin-top:6px; border-radius:4px; border:1px solid #374151;">`;
+      }
+      
+      item.innerHTML = `
+        <div class="timeline-title">${payload.title}</div>
+        <div class="timeline-detail">${payload.detail}</div>
+        ${imgHtml}
+      `;
+      timeline.appendChild(item);
+      timeline.scrollTop = timeline.scrollHeight;
+      
+      // Advance progress slightly
+      const fill = document.getElementById('progress-fill');
+      let currentW = parseInt(fill.style.width) || 0;
+      if (currentW < 90) fill.style.width = (currentW + 15) + '%';
+    }
+
+    document.getElementById('btn-undo')?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'UNDO_ACTION' });
+      addTimelineStep({ title: 'Undo Requested', detail: 'Rolling back last action via server...' });
+    });
+
+    function showApprovalModal(payload) {
+      currentApprovalActionId = payload.actionId;
+      const modal = document.getElementById('modal-approval');
+      const desc = document.getElementById('approval-description');
+      const risk = document.getElementById('approval-risk-badge');
+      
+      desc.textContent = payload.description || 'Action requires approval.';
+      
+      const riskLevel = (payload.riskLevel || 'SAFE').toUpperCase();
+      risk.textContent = riskLevel;
+      risk.className = 'risk-badge';
+      if (riskLevel === 'CRITICAL') risk.classList.add('risk-critical');
+      else if (riskLevel === 'CAUTION') risk.classList.add('risk-caution');
+      else risk.classList.add('risk-safe');
+
+      modal.style.display = 'flex';
+    }
+
+    function sendApprovalResponse(approved) {
+      if (!currentApprovalActionId) return;
+      chrome.runtime.sendMessage({
+        type: 'APPROVAL_RESPONSE',
+        payload: {
+          actionId: currentApprovalActionId,
+          approved: approved,
+          client_timestamp: Date.now()
+        }
+      });
+      document.getElementById('modal-approval').style.display = 'none';
+      currentApprovalActionId = null;
+    }
+
+    document.getElementById('btn-approve')?.addEventListener('click', () => sendApprovalResponse(true));
+    document.getElementById('btn-deny')?.addEventListener('click', () => sendApprovalResponse(false));
   </script>
 </body>
 </html>
