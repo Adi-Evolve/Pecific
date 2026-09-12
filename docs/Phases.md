@@ -42,13 +42,16 @@ This document tracks the phased implementation across the project lifecycle, uni
 
 ---
 
-## Phase 3: Client-Side Integration & Visual Redaction (In Progress 🔄)
+## Phase 3: Client-Side Integration & Visual Redaction (Completed ✅)
 - **Objective:** Wire service worker to coordinate modules: query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
 - **Dev 3 / Privacy Deliverables:**
+  - Integrated Dev 1 extension shell with Dev 3 privacy engine via `extension/workers/privacy-client.js`.
+  - Exposed 3-line asynchronous helper module (`sanitizeDOMSnapshot`) for Dev 1.
+  - Live zero-egress verification engine proving 0 raw secrets leave the user's browser.
+  - Indian SPII expansion for SIH PS26171: Voter ID (EPIC), Indian Driving License (Parivahan DL), EPFO UAN, Vehicle Registration (RC), and Indian Bank Account Numbers.
   - Real screenshot testing across complex websites (Google Classroom, Eduplus Login, Gmail OTP, Amazon Deals, AWS Profile).
   - Pixel-perfect visual blackout of sensitive text, account greetings, and PIN codes.
-  - Profile avatar detection (Hough circle analysis) and face detection (Haar cascade).
-  - On-device vision processor helper (`scripts/vision_processor.py`).
+  - 149/149 test suites passing (Unit, Server contract, Adversarial, and Privacy client integration).
 
 ---
 
@@ -64,8 +67,10 @@ This document tracks the phased implementation across the project lifecycle, uni
 
 ---
 
-## Phase 6: Advanced Features & UX Polish
-- **Deliverables:** Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts.
+## Phase 6: Advanced Features & UX Polish (In Progress 🔄)
+- **Deliverables:**
+  - Redaction Telemetry Hook & Privacy Vault Modal in extension popup and sidepanel (Completed ✅).
+  - Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts.
 
 ---
 

@@ -4,7 +4,7 @@
   "description": "PrivacyLens — On-device Visual Perception for Light-weight Browser Agents (SIH PS26171)",
   "type": "module",
   "scripts": {
-    "test": "node extension/workers/__tests__/regex.test.js && node extension/workers/__tests__/redaction.test.js && node extension/workers/__tests__/adversarial.test.js && node extension/workers/__tests__/dom_redaction_server.test.js",
+    "test": "node extension/workers/__tests__/regex.test.js && node extension/workers/__tests__/redaction.test.js && node extension/workers/__tests__/adversarial.test.js && node extension/workers/__tests__/dom_redaction_server.test.js && node extension/workers/__tests__/privacy_client.test.js",
     "redact:screenshots": "node scripts/scan_and_redact_screenshots.js",
     "generate:benchmarks": "python scripts/generate_benchmark_screenshots.py"
   }

@@ -31,7 +31,7 @@ Automating complex web tasks (search, filling forms, job applications, checkout)
 
 ## 4. Main Features & Capabilities
 1. **Natural-Language Task Input:** Users input tasks like *"Buy headphones under ₹1000 on Flipkart"* or *"Apply for the job on this portal"*, and the agent plans and executes them autonomously.
-2. **On-Device PII Redaction:** Multi-category detection for SPII (Aadhaar, PAN, Credit Cards with Luhn, Passwords), PII (Emails, Phone numbers, Names, UPI IDs), and Contextual fields (DOB, Addresses, IFSC, Passports).
+2. **On-Device PII & Indian SPII Redaction:** Multi-category detection for SPII (Aadhaar, PAN, Voter ID / EPIC, Driving License, EPFO UAN, Indian Bank Accounts, Credit Cards with Luhn, Passwords), PII (Emails, Phone numbers, Names, UPI IDs, Vehicle RC), and Contextual fields (DOB, Addresses, IFSC, Passports). Supported by a clean 3-line asynchronous interface (`privacy-client.js`).
 3. **LLM Task Planning & Visual Grounding:** Uses Qwen3-14B / Llama 3 for structured planning and Qwen2.5-VL-7B for verifying actions against screenshots when DOM is ambiguous.
 4. **Encrypted Local Vault:** Credentials stay strictly local. The server payload only knows *what type* of field was redacted (`is_redacted`, `redacted_types`), not its real value.
 5. **Explicit User Approval:** Critical actions (login, payment checkout, account deletion) pause execution and require explicit user consent via an interactive approval dialog.

@@ -32,6 +32,9 @@ export const PII_TYPES = {
   SSN: 'SSN',
   VOTER_ID: 'VOTER_ID',
   DRIVING_LICENSE: 'DL',
+  EPFO_UAN: 'EPFO_UAN',
+  VEHICLE_RC: 'VEHICLE_RC',
+  BANK_ACCOUNT: 'BANK_ACCOUNT',
 };
 
 // ─── Compiled Regex Patterns ────────────────────────────────────────────────────
@@ -71,8 +74,20 @@ const PATTERNS = {
   // Indian Passport: 1 uppercase letter + 7 digits (contextual — only near "passport" labels)
   PASSPORT: /\b[A-Z]\d{7}\b/g,
 
-  // Voter ID (EPIC): 3 uppercase letters + 7 digits
-  VOTER_ID: /\b[A-Z]{3}\d{7}\b/g,
+  // Voter ID (EPIC): 3 uppercase letters + optional separator + 7 digits
+  VOTER_ID: /\b[A-Z]{3}[\s\/-]?\d{7}\b/g,
+
+  // Indian Driving License (Parivahan standard): e.g. DL-0420110012345 or MH02 20180012345 or KA0120190001234
+  DRIVING_LICENSE: /\b[A-Z]{2}[-\s]?[0-9]{2}[-\s]?(?:19|20)[0-9]{2}[-\s]?[0-9]{7}\b|\b[A-Z]{2}[0-9]{13}\b/g,
+
+  // EPFO UAN: 12-digit universal account number
+  EPFO_UAN: /\b\d{12}\b/g,
+
+  // Vehicle Registration (RC): Indian plate format (e.g. DL 01 AB 1234) or Bharat series (22 BH 1234 AA)
+  VEHICLE_RC: /\b[A-Z]{2}[-\s]?[0-9]{1,2}[-\s]?[A-Z]{1,3}[-\s]?[0-9]{4}\b|\b[0-9]{2}[-\s]?BH[-\s]?[0-9]{4}[-\s]?[A-Z]{1,2}\b/g,
+
+  // Indian Bank Account Number: 9 to 18 digits (contextual)
+  BANK_ACCOUNT: /\b\d{9,18}\b/g,
 
   // SSN (US format, included for completeness): XXX-XX-XXXX
   SSN: /\b\d{3}[\-]\d{2}[\-]\d{4}\b/g,
@@ -137,6 +152,39 @@ const PASSPORT_LABELS = new Set([
 const OTP_LABELS = new Set([
   'otp', 'verification code', 'verify', 'one-time password', 'security code',
   'passcode', 'verification', 'auth code', 'enter code', 'your code',
+]);
+
+/** Voter ID context labels */
+const VOTER_ID_LABELS = new Set([
+  'voter', 'voter id', 'epic', 'epic no', 'elector photo identity', 'election card', 'voter card',
+]);
+
+/** Driving License context labels */
+const DL_LABELS = new Set([
+  'dl', 'driving license', 'driving licence', 'd/l', 'licence no', 'license no', 'dl no', 'driver license',
+]);
+
+/** EPFO UAN context labels */
+const UAN_LABELS = new Set([
+  'uan', 'universal account number', 'epfo', 'pf number', 'pf no', 'provident fund', 'member id',
+]);
+
+/** Vehicle Registration / RC context labels */
+const VEHICLE_RC_LABELS = new Set([
+  'vehicle', 'rc', 'registration', 'reg no', 'plate', 'car no', 'bike no', 'chassis', 'motor', 'vehicle no',
+]);
+
+/** Indian Bank Account context labels */
+const BANK_ACCOUNT_LABELS = new Set([
+  'account number', 'account no', 'a/c no', 'a/c number', 'ac no', 'bank account', 'saving account', 'savings account', 'current account', 'a/c #', 'acct no', 'account #', 'bank a/c',
+]);
+
+/** Valid Indian State / Union Territory 2-letter codes */
+const INDIAN_STATE_CODES = new Set([
+  'AN', 'AP', 'AR', 'AS', 'BR', 'CG', 'CH', 'DD', 'DN', 'DL',
+  'GA', 'GJ', 'HR', 'HP', 'JH', 'JK', 'KA', 'KL', 'LA', 'LD',
+  'MP', 'MH', 'MN', 'ML', 'MZ', 'NL', 'OD', 'OR', 'PB', 'PY',
+  'RJ', 'SK', 'TN', 'TS', 'TR', 'UP', 'UK', 'UA', 'WB',
 ]);
 
 /** Non-sensitive IPs to skip */
@@ -565,6 +613,105 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
+  // ── 14. Voter ID (EPIC) ────────────────────────────────────────────────
+  {
+    const re = new RegExp(PATTERNS.VOTER_ID.source, PATTERNS.VOTER_ID.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+
+      // Must not be part of a longer alphanumeric string
+      const charBefore = start > 0 ? text[start - 1] : ' ';
+      const charAfter = end < text.length ? text[end] : ' ';
+      if (/[A-Za-z0-9]/.test(charBefore) || /[A-Za-z0-9]/.test(charAfter)) continue;
+
+      addMatch(PII_TYPES.VOTER_ID, value, start, end);
+    }
+  }
+
+  // ── 15. Indian Driving License (DL) ────────────────────────────────────
+  {
+    const re = new RegExp(PATTERNS.DRIVING_LICENSE.source, PATTERNS.DRIVING_LICENSE.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+
+      // Must not be part of a longer alphanumeric string
+      const charBefore = start > 0 ? text[start - 1] : ' ';
+      const charAfter = end < text.length ? text[end] : ' ';
+      if (/[A-Za-z0-9]/.test(charBefore) || /[A-Za-z0-9]/.test(charAfter)) continue;
+
+      // Validate Indian state code or nearby DL context
+      const stateCode = value.slice(0, 2).toUpperCase();
+      if (INDIAN_STATE_CODES.has(stateCode) || hasContextLabel(context, DL_LABELS)) {
+        addMatch(PII_TYPES.DRIVING_LICENSE, value, start, end);
+      }
+    }
+  }
+
+  // ── 16. EPFO UAN (12-digit Universal Account Number) ───────────────────
+  if (hasContextLabel(context, UAN_LABELS)) {
+    const re = new RegExp(PATTERNS.EPFO_UAN.source, PATTERNS.EPFO_UAN.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+      if (isPartOfLongerNumber(text, start, end)) continue;
+
+      addMatch(PII_TYPES.EPFO_UAN, value, start, end);
+    }
+  }
+
+  // ── 17. Vehicle Registration (RC) ──────────────────────────────────────
+  {
+    const re = new RegExp(PATTERNS.VEHICLE_RC.source, PATTERNS.VEHICLE_RC.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+
+      const charBefore = start > 0 ? text[start - 1] : ' ';
+      const charAfter = end < text.length ? text[end] : ' ';
+      if (/[A-Za-z0-9]/.test(charBefore) || /[A-Za-z0-9]/.test(charAfter)) continue;
+
+      const stateCode = value.slice(0, 2).toUpperCase();
+      const isBH = /^\d{2}\s*BH/i.test(value);
+      if (INDIAN_STATE_CODES.has(stateCode) || isBH || hasContextLabel(context, VEHICLE_RC_LABELS)) {
+        addMatch(PII_TYPES.VEHICLE_RC, value, start, end);
+      }
+    }
+  }
+
+  // ── 18. Indian Bank Account Number (contextual) ────────────────────────
+  if (hasContextLabel(context, BANK_ACCOUNT_LABELS)) {
+    const re = new RegExp(PATTERNS.BANK_ACCOUNT.source, PATTERNS.BANK_ACCOUNT.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+      if (isPartOfLongerNumber(text, start, end)) continue;
+
+      addMatch(PII_TYPES.BANK_ACCOUNT, value, start, end);
+    }
+  }
+
   // Sort matches by position (start index)
   matches.sort((a, b) => a.start - b.start);
 
@@ -696,6 +843,78 @@ export function scanDOMElements(elements) {
           start: 0,
           end: targetVal.length,
           confidence: 0.90,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 7. Bank Account Number input field
+    if (el.value && /(?:account[-_\s]?num|a\/c[-_\s]?no|acct[-_\s]?no|bank[-_\s]?acc)/i.test(labelContext)) {
+      const cleanVal = el.value.replace(/\D/g, '');
+      if (cleanVal.length >= 9 && cleanVal.length <= 18 && !valueMatches.some(m => m.type === PII_TYPES.BANK_ACCOUNT)) {
+        valueMatches.push({
+          type: PII_TYPES.BANK_ACCOUNT,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 8. Driving License input field
+    if (el.value && /(?:driving[-_\s]?licen|dl[-_\s]?no|license[-_\s]?no)/i.test(labelContext)) {
+      if (!valueMatches.some(m => m.type === PII_TYPES.DRIVING_LICENSE)) {
+        valueMatches.push({
+          type: PII_TYPES.DRIVING_LICENSE,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 9. Voter ID / EPIC input field
+    if (el.value && /(?:voter[-_\s]?id|epic[-_\s]?no|election[-_\s]?card)/i.test(labelContext)) {
+      if (!valueMatches.some(m => m.type === PII_TYPES.VOTER_ID)) {
+        valueMatches.push({
+          type: PII_TYPES.VOTER_ID,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 10. EPFO UAN input field
+    if (el.value && /(?:epfo|uan[-_\s]?no|pf[-_\s]?number|provident[-_\s]?fund)/i.test(labelContext)) {
+      const cleanVal = el.value.replace(/\D/g, '');
+      if (cleanVal.length === 12 && !valueMatches.some(m => m.type === PII_TYPES.EPFO_UAN)) {
+        valueMatches.push({
+          type: PII_TYPES.EPFO_UAN,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 11. Vehicle Registration (RC) input field
+    if (el.value && /(?:vehicle[-_\s]?reg|rc[-_\s]?no|registration[-_\s]?no|plate[-_\s]?no)/i.test(labelContext)) {
+      if (!valueMatches.some(m => m.type === PII_TYPES.VEHICLE_RC)) {
+        valueMatches.push({
+          type: PII_TYPES.VEHICLE_RC,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
           method: 'DOM_ATTRIBUTE',
         });
       }

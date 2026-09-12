@@ -302,12 +302,17 @@ export function getPIICategory(type) {
     case 'CARD':
     case 'PASSWORD_FIELD':
     case 'OTP':
+    case 'VOTER_ID':
+    case 'DL':
+    case 'EPFO_UAN':
+    case 'BANK_ACCOUNT':
       return 'SPII';
     case 'EMAIL':
     case 'PHONE':
     case 'NAME':
     case 'UPI':
     case 'AVATAR':
+    case 'VEHICLE_RC':
       return 'PII';
     default:
       return 'CONTEXTUAL';
@@ -405,6 +410,11 @@ function updateBreakdown(breakdown, matches) {
       case 'CARD': breakdown.cards++; break;
       case 'DOB': breakdown.dob++; break;
       case 'UPI': breakdown.upi++; break;
+      case 'VOTER_ID': breakdown.voter_id = (breakdown.voter_id || 0) + 1; break;
+      case 'DL': breakdown.dl = (breakdown.dl || 0) + 1; break;
+      case 'EPFO_UAN': breakdown.uan = (breakdown.uan || 0) + 1; break;
+      case 'BANK_ACCOUNT': breakdown.bank_account = (breakdown.bank_account || 0) + 1; break;
+      case 'VEHICLE_RC': breakdown.vehicle_rc = (breakdown.vehicle_rc || 0) + 1; break;
       default: breakdown.other++; break;
     }
   }
