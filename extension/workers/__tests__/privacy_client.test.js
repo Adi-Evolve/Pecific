@@ -42,19 +42,19 @@ async function runTests() {
 
   resetSessionVault('test_client_session');
 
-  // Sample DOM Snapshot containing standard PII and Indian SPII
+  // Sample DOM Snapshot containing standard PII and Indian SPII (clearly synthetic non-production values)
   const rawDOM = {
-    url: 'https://service-portal.gov.in/profile',
-    title: 'Citizen Profile & Services',
+    url: 'https://synthetic-portal.example.invalid/profile',
+    title: 'Synthetic Citizen Profile & Services',
     viewport: { width: 1280, height: 800 },
     elements_count: 6,
     elements: [
-      { id: 'el_header', tag: 'H1', text: 'Welcome, Aditya Sharma' },
-      { id: 'el_email', tag: 'INPUT', type: 'text', value: 'aditya.sharma@gov.in', selector: '#user-email' },
-      { id: 'el_voter', tag: 'SPAN', text: 'Voter ID: ABC1234567', selector: '#epic-badge' },
-      { id: 'el_dl', tag: 'DIV', text: 'Driving License: DL-0420110012345', selector: '.dl-info' },
-      { id: 'el_bank', tag: 'INPUT', type: 'text', value: '112345678901', nearbyLabels: 'Bank Account Number', selector: '#bank-acc' },
-      { id: 'el_pwd', tag: 'INPUT', type: 'password', value: 'GovSecret@2026', selector: '#login-pass' },
+      { id: 'el_header', tag: 'H1', text: 'Welcome, Test User' },
+      { id: 'el_email', tag: 'INPUT', type: 'text', value: 'synthetic.citizen@example.invalid', selector: '#user-email' },
+      { id: 'el_voter', tag: 'SPAN', text: 'Voter ID: ABC0000001', selector: '#epic-badge' },
+      { id: 'el_dl', tag: 'DIV', text: 'Driving License: DL-0119900000001', selector: '.dl-info' },
+      { id: 'el_bank', tag: 'INPUT', type: 'text', value: '987654321098', nearbyLabels: 'Bank Account Number', selector: '#bank-acc' },
+      { id: 'el_pwd', tag: 'INPUT', type: 'password', value: 'MOCK_SYNTHETIC_SECRET_#2026', selector: '#login-pass' },
     ]
   };
 
@@ -71,11 +71,11 @@ async function runTests() {
 
   // Check token substitutions
   const sanitizedJson = JSON.stringify(result.sanitizedDOM);
-  assert(!sanitizedJson.includes('aditya.sharma@gov.in'), 'Raw email NOT present in sanitized DOM');
-  assert(!sanitizedJson.includes('ABC1234567'), 'Raw Voter ID NOT present in sanitized DOM');
-  assert(!sanitizedJson.includes('DL-0420110012345'), 'Raw DL NOT present in sanitized DOM');
-  assert(!sanitizedJson.includes('112345678901'), 'Raw Bank Account NOT present in sanitized DOM');
-  assert(!sanitizedJson.includes('GovSecret@2026'), 'Raw password NOT present in sanitized DOM');
+  assert(!sanitizedJson.includes('synthetic.citizen@example.invalid'), 'Raw email NOT present in sanitized DOM');
+  assert(!sanitizedJson.includes('ABC0000001'), 'Raw Voter ID NOT present in sanitized DOM');
+  assert(!sanitizedJson.includes('DL-0119900000001'), 'Raw DL NOT present in sanitized DOM');
+  assert(!sanitizedJson.includes('987654321098'), 'Raw Bank Account NOT present in sanitized DOM');
+  assert(!sanitizedJson.includes('MOCK_SYNTHETIC_SECRET_#2026'), 'Raw password NOT present in sanitized DOM');
 
   // Check token manifest
   const manifest = result.tokenManifest;
@@ -93,7 +93,7 @@ async function runTests() {
 
   // Adversarial check: deliberately inject a raw secret into a DOM clone
   const taintedDOM = JSON.parse(JSON.stringify(result.sanitizedDOM));
-  taintedDOM.elements[0].text = 'Leaked email: aditya.sharma@gov.in';
+  taintedDOM.elements[0].text = 'Leaked email: synthetic.citizen@example.invalid';
   const breachCheck = verifyZeroEgress(taintedDOM, 'test_client_session');
   assertEqual(breachCheck.safe, false, 'Detects deliberate raw secret leakage');
   assertEqual(breachCheck.leakedCount, 1, 'Accurately reports 1 leaked token');
@@ -103,14 +103,14 @@ async function runTests() {
 
   const emailToken = manifest.tokens_used.find(t => t.startsWith('[EMAIL_'));
   const resolvedEmail = resolveVaultToken(emailToken, 'test_client_session');
-  assertEqual(resolvedEmail, 'aditya.sharma@gov.in', 'Resolves email token from client vault');
+  assertEqual(resolvedEmail, 'synthetic.citizen@example.invalid', 'Resolves email token from client vault');
 
   const voterToken = manifest.tokens_used.find(t => t.startsWith('[VOTER_ID_'));
   const resolvedVoter = resolveVaultToken(voterToken, 'test_client_session');
-  assertEqual(resolvedVoter, 'ABC1234567', 'Resolves Voter ID token from client vault');
+  assertEqual(resolvedVoter, 'ABC0000001', 'Resolves Voter ID token from client vault');
 
   const restored = restoreVaultText(`Login with ${emailToken}`, 'test_client_session');
-  assertEqual(restored, 'Login with aditya.sharma@gov.in', 'Restores text template from client vault');
+  assertEqual(restored, 'Login with synthetic.citizen@example.invalid', 'Restores text template from client vault');
 
   // ── Test 4: Live Telemetry for UI Dashboard ────────────────────────────────
   console.log('\n📊 Group 4: Live Telemetry for UI Dashboard');
@@ -119,10 +119,11 @@ async function runTests() {
   assert(telemetry.spii_count >= 3, `Counts SPII properly (Found: ${telemetry.spii_count})`);
   assert(telemetry.pii_count >= 1, `Counts PII properly (Found: ${telemetry.pii_count})`);
   assertEqual(telemetry.zero_egress_verified, true, 'Zero-egress status is verified true');
+  assertEqual(telemetry.leaked_count, 0, 'Reported leak count is 0');
   assert(telemetry.tokens_active.length > 0, 'Lists active tokens');
 
-  // ── Test 5: Incremental DOM Scanning ───────────────────────────────────────
-  console.log('\n⚡ Group 5: Incremental DOM Scanning');
+  // ── Test 5: Incremental DOM Scanning & Token Persistence ───────────────────
+  console.log('\n⚡ Group 5: Incremental DOM Scanning & Token Stability');
 
   const nextRawDOM = JSON.parse(JSON.stringify(rawDOM));
   nextRawDOM.elements_count = 7;
@@ -136,6 +137,11 @@ async function runTests() {
   assert(!!incrementalResult.sanitizedDOM, 'Incremental returns sanitized DOM');
   assert(incrementalResult.incrementalStats.changed === 1, 'Only scanned 1 newly added element');
   assert(incrementalResult.tokenManifest.tokens_used.some(t => t.startsWith('[PHONE_')), 'Masked new phone token');
+  
+  // Verify token persistence: email token on el_email must still be [EMAIL_1], not newly allocated [EMAIL_2]
+  const elEmail = incrementalResult.sanitizedDOM.elements.find(e => e.id === 'el_email');
+  assertEqual(elEmail.value, emailToken, 'Preserves original token ID across incremental step');
+  assertEqual(resolveVaultToken(emailToken, 'test_client_session'), 'synthetic.citizen@example.invalid', 'Prior token remains resolvable from vault');
 
   // ── Test 6: Class-Based PrivacyClient ──────────────────────────────────────
   console.log('\n🏛️ Group 6: PrivacyClient Class');
@@ -145,6 +151,7 @@ async function runTests() {
   assert(classResult.zeroEgressProof.safe, 'PrivacyClient instance executes sanitize safely');
   const clientTelemetry = client.getTelemetry();
   assertEqual(clientTelemetry.zero_egress_verified, true, 'PrivacyClient telemetry verified');
+  assertEqual(clientTelemetry.leaked_count, 0, 'PrivacyClient leak count is 0');
 
   console.log('\n' + '─'.repeat(50));
   console.log(`📊 Privacy Client Results: ${passed} passed, ${failed} failed\n`);

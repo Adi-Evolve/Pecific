@@ -71,7 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (statSpii) statSpii.textContent = telemetry.spii_count || 0;
     if (statPii) statPii.textContent = telemetry.pii_count || 0;
     if (statCtx) statCtx.textContent = telemetry.contextual_count || 0;
-    if (statLeak) statLeak.textContent = '0';
+    
+    // Genuine zero-egress verification metric (never hard-coded)
+    const leakCount = telemetry.leaked_count !== undefined ? telemetry.leaked_count : 0;
+    if (statLeak) {
+      statLeak.textContent = leakCount;
+      statLeak.style.color = (leakCount > 0 || telemetry.zero_egress_verified === false) ? '#EF4444' : '#10B981';
+    }
 
     const total = telemetry.total_masked || 0;
     if (idleMaskedCount) idleMaskedCount.textContent = total;
@@ -113,15 +119,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Event Listeners for Privacy Vault Modal
-  if (btnLock) btnLock.addEventListener('click', openVaultModal);
-  if (badgePrivacyIdle) badgePrivacyIdle.addEventListener('click', openVaultModal);
-  if (badgePrivacyRunning) badgePrivacyRunning.addEventListener('click', openVaultModal);
-  if (btnCloseVault) btnCloseVault.addEventListener('click', closeVaultModal);
-  if (btnDoneVault) btnDoneVault.addEventListener('click', closeVaultModal);
+  // Helper to ensure clickable elements respond to both click and keyboard (Enter / Space)
+  function attachAccessibleTrigger(el, handler) {
+    if (!el) return;
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handler(e);
+      }
+    });
+  }
+
+  // Event Listeners for Privacy Vault Modal with Keyboard Accessibility
+  if (btnLock) attachAccessibleTrigger(btnLock, openVaultModal);
+  if (badgePrivacyIdle) attachAccessibleTrigger(badgePrivacyIdle, openVaultModal);
+  if (badgePrivacyRunning) attachAccessibleTrigger(badgePrivacyRunning, openVaultModal);
+  if (btnCloseVault) attachAccessibleTrigger(btnCloseVault, closeVaultModal);
+  if (btnDoneVault) attachAccessibleTrigger(btnDoneVault, closeVaultModal);
 
   if (btnResetVault) {
-    btnResetVault.addEventListener('click', () => {
+    attachAccessibleTrigger(btnResetVault, () => {
       chrome.runtime.sendMessage({ type: 'RESET_SESSION' }, () => {
         refreshTelemetry();
       });
@@ -148,16 +166,30 @@ document.addEventListener('DOMContentLoaded', () => {
     viewIdle.style.display = 'none';
     viewRunning.style.display = 'block';
 
-    // Send USER_QUERY to service worker
-    chrome.runtime.sendMessage({
-      type: 'USER_QUERY',
-      timestamp: new Date().toISOString(),
-      payload: { query: query }
-    }, (response) => {
-      if (response && response.telemetry) {
-        updateTelemetryUI(response.telemetry);
-      }
-    });
+    // Query active tab info and send USER_QUERY to service worker
+    const sendQueryMessage = (tabInfo = {}) => {
+      chrome.runtime.sendMessage({
+        type: 'USER_QUERY',
+        timestamp: new Date().toISOString(),
+        payload: { 
+          query: query,
+          url: tabInfo.url,
+          title: tabInfo.title
+        }
+      }, (response) => {
+        if (response && response.telemetry) {
+          updateTelemetryUI(response.telemetry);
+        }
+      });
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        sendQueryMessage(tabs?.[0] || {});
+      });
+    } else {
+      sendQueryMessage({});
+    }
   });
 
   // Transition to Idle State

@@ -318,11 +318,28 @@ test('Detects Bharat Series (BH) vehicle plate', () => {
   assertIncludes(matches, 'VEHICLE_RC', '22 BH 1234 AA');
 });
 
+test('Detects Bharat Series (BH) vehicle plate with hyphens without context label', () => {
+  const matches = scanRegexPII('Vehicle Plate: 22-BH-1234-AA');
+  assertIncludes(matches, 'VEHICLE_RC', '22-BH-1234-AA');
+});
+
 console.log('\n🏦 Indian Bank Account Number Detection:');
 
 test('Detects Bank Account with account label', () => {
   const matches = scanRegexPII('A/C No: 112345678901', { nearbyLabels: 'Savings Bank Account Number' });
   assertIncludes(matches, 'BANK_ACCOUNT', '112345678901');
+});
+
+test('Detects 12-digit Bank Account starting with 2-9 (not shadowed by Aadhaar)', () => {
+  const matches = scanRegexPII('A/C: 512345678901', { nearbyLabels: 'Bank Account Number' });
+  assertIncludes(matches, 'BANK_ACCOUNT', '512345678901');
+  assertNotIncludes(matches, 'AADHAAR');
+});
+
+test('Detects 12-digit EPFO UAN starting with 2-9 (not shadowed by Aadhaar)', () => {
+  const matches = scanRegexPII('UAN: 201234567890', { nearbyLabels: 'EPFO UAN Number' });
+  assertIncludes(matches, 'EPFO_UAN', '201234567890');
+  assertNotIncludes(matches, 'AADHAAR');
 });
 
 test('Skips bank account digits without account label', () => {

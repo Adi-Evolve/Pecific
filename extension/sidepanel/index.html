@@ -144,7 +144,11 @@
       const elLeak = document.getElementById('side-leak-count');
       if (elSpii) elSpii.textContent = telemetry.spii_count || 0;
       if (elPii) elPii.textContent = telemetry.pii_count || 0;
-      if (elLeak) elLeak.textContent = '0';
+      if (elLeak) {
+        const leaks = telemetry.leaked_count !== undefined ? telemetry.leaked_count : 0;
+        elLeak.textContent = leaks;
+        elLeak.style.color = (leaks > 0 || telemetry.zero_egress_verified === false) ? '#EF4444' : '#10B981';
+      }
     }
 
     // Fetch initial telemetry
