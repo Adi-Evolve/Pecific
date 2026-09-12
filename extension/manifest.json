@@ -12,11 +12,24 @@
   ],
   "host_permissions": [
     "http://localhost:8000/*",
+    "ws://localhost:8000/*",
     "<all_urls>"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
+  },
+  "commands": {
+    "toggle-sidepanel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Toggle Pecific side panel"
+    }
   },
   "action": {
     "default_popup": "popup/index.html"

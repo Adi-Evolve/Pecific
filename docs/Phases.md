@@ -42,35 +42,38 @@ This document tracks the phased implementation across the project lifecycle, uni
 
 ---
 
-## Phase 3: Client-Side Integration & Visual Redaction (Completed ✅)
+## Phase 3: Client-Side Integration & Visual Redaction (In Progress 🔄)
 - **Objective:** Wire service worker to coordinate modules: query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
-- **Dev 3 / Privacy Deliverables:**
+- **Dev 3 / Privacy Deliverables (Completed ✅):**
   - Integrated Dev 1 extension shell with Dev 3 privacy engine via `extension/workers/privacy-client.js`.
   - Exposed 3-line asynchronous helper module (`sanitizeDOMSnapshot`) for Dev 1.
   - Live zero-egress verification engine proving 0 raw secrets leave the user's browser.
-  - Indian SPII expansion for SIH PS26171: Voter ID (EPIC), Indian Driving License (Parivahan DL), EPFO UAN, Vehicle Registration (RC), and Indian Bank Account Numbers.
-  - Real screenshot testing across complex websites (Google Classroom, Eduplus Login, Gmail OTP, Amazon Deals, AWS Profile).
+  - Indian SPII expansion for SIH PS26171.
+  - Real screenshot testing across complex websites.
   - Pixel-perfect visual blackout of sensitive text, account greetings, and PIN codes.
-  - 149/149 test suites passing (Unit, Server contract, Adversarial, and Privacy client integration).
+- **Dev 1 / Orchestration Deliverables (In Progress 🔄):**
+  - Replace service-worker DOM extraction stub with `chrome.tabs.sendMessage` to Dev 2's `content-script.js`.
+  - Initialize Dev 4's `vision-worker.js` to process screenshots for face bounding boxes.
+  - Pass the extracted DOM and vision bounding boxes to Dev 3's `sanitizeDOMSnapshot`.
 
 ---
 
-## Phase 4: Client $\leftrightarrow$ Server Integration
+## Phase 4: Client $\leftrightarrow$ Server Integration (Completed ✅)
 - **Objective:** Full round-trip integration over WebSocket.
-- **Deliverables:** Connect extension background script to FastAPI WebSocket server, stream sanitized DOM payload, and receive structured plan responses.
+- **Dev 1 Deliverables (Completed ✅):** Connected extension background script (`service-worker.js`) to FastAPI WebSocket server, added `wasm-unsafe-eval` CSP to manifest, streamed sanitized DOM payload, and set up routing for structured plan responses (`NEXT_STEP`, `PLAN`, etc.).
 
 ---
 
-## Phase 5: Full Agentic Loop & Approval Dialog
+## Phase 5: Full Agentic Loop & Approval Dialog (Completed ✅)
 - **Objective:** End-to-end autonomous action with human-in-the-loop controls.
-- **Deliverables:** Wire the interactive approval dialog to real checkout/login events; execute native DOM actions (click, fill) resolving vault tokens locally.
+- **Dev 1 Deliverables (Completed ✅):** Wire the interactive approval dialog (UI) to real `APPROVAL_REQUIRED` WebSocket events. When approved, allow execution of native DOM actions (click, fill) by locally resolving vault tokens via Dev 2's action executor.
 
 ---
 
-## Phase 6: Advanced Features & UX Polish (In Progress 🔄)
+## Phase 6: Advanced Features & UX Polish (Completed ✅)
 - **Deliverables:**
   - Redaction Telemetry Hook & Privacy Vault Modal in extension popup and sidepanel (Completed ✅).
-  - Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts.
+  - Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts (Completed ✅).
 
 ---
 
