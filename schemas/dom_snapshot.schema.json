@@ -1,123 +1,92 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dom_snapshot.schema.json",
   "title": "DOMSnapshot",
-  "description": "Output of content script DOM extractor (R2). Captured raw interactive elements, metadata, and structural layout before privacy sanitization.",
+  "description": "Sanitized DOM accessibility-tree snapshot sent from the extension (Dev2 extractor, post Dev3 privacy pass) to the server planner (Dev5).",
   "type": "object",
-  "required": ["elements_count", "elements"],
+  "required": ["url", "title", "viewport", "elements"],
   "properties": {
     "url": {
       "type": "string",
-      "format": "uri",
-      "description": "Full URL of the captured page"
+      "description": "Current page URL."
     },
     "title": {
       "type": "string",
-      "description": "Page title"
+      "description": "Current page title."
     },
-    "elements_count": {
-      "type": "integer",
-      "description": "Total number of interactive/semantic elements extracted"
+    "viewport": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
     },
     "elements": {
       "type": "array",
+      "description": "Tagged, interactive elements from the accessibility tree.",
       "items": {
         "type": "object",
-        "required": ["id", "tag"],
+        "required": ["id", "tag", "role", "rect"],
         "properties": {
           "id": {
-            "type": "string",
-            "description": "Stable element ID assigned by extractor (e.g. e_1, e_search)"
+            "type": "integer",
+            "description": "Stable numeric tag assigned by the extractor; referenced by action.schema.json to target this element."
           },
           "tag": {
             "type": "string",
-            "description": "HTML tag name in uppercase (INPUT, BUTTON, A, etc.)"
-          },
-          "selector": {
-            "type": "string",
-            "description": "Unique CSS selector for DOM targeting"
-          },
-          "text": {
-            "type": "string",
-            "description": "Visible text content inside the element"
-          },
-          "placeholder": {
-            "type": "string",
-            "description": "Placeholder attribute value"
-          },
-          "href": {
-            "type": "string",
-            "description": "Href attribute for links"
+            "description": "Uppercase HTML tag name, e.g. INPUT, BUTTON, A."
           },
           "type": {
             "type": "string",
-            "description": "Input type (text, password, email, submit, etc.)"
-          },
-          "value": {
-            "type": "string",
-            "description": "Current input value"
-          },
-          "interactive": {
-            "type": "boolean",
-            "description": "Whether the element responds to clicks, inputs, or keypresses"
+            "description": "Input type attribute, if applicable (e.g. search, password, submit)."
           },
           "role": {
             "type": "string",
-            "description": "ARIA role"
+            "description": "ARIA role or inferred role, e.g. searchbox, button, link."
           },
-          "parentTag": {
+          "text": {
             "type": "string",
-            "description": "Tag name of the immediate or semantic parent container"
+            "description": "Visible text content, if any (post-sanitization by Dev3's privacy worker)."
           },
-          "parentClass": {
-            "type": "string",
-            "description": "CSS classes of the parent container"
+          "placeholder": {
+            "type": "string"
           },
-          "parentId": {
-            "type": "string",
-            "description": "ID of parent container"
+          "value": {
+            "type": "string"
           },
-          "nearbyLabels": {
-            "type": "string",
-            "description": "Associated label or adjacent text for contextual identification"
-          },
-          "autocomplete": {
-            "type": "string",
-            "description": "Autocomplete attribute hint"
-          },
-          "coordinates": {
+          "rect": {
             "type": "array",
+            "description": "[x, y, width, height] bounding box in viewport coordinates.",
             "items": { "type": "number" },
             "minItems": 4,
-            "maxItems": 4,
-            "description": "[x, y, width, height] viewport bounding box in pixels"
+            "maxItems": 4
           }
         }
       }
     },
     "forms": {
       "type": "array",
+      "description": "Detected forms on the page, with vault availability per field (no actual values).",
       "items": {
         "type": "object",
+        "required": ["id", "fields"],
         "properties": {
           "id": { "type": "string" },
-          "action": { "type": "string" },
-          "method": { "type": "string" },
-          "inputs": {
+          "fields": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "vault_available": {
+            "type": "object",
+            "additionalProperties": { "type": "boolean" }
           }
         }
       }
     },
-    "viewport": {
-      "type": "object",
-      "required": ["width", "height"],
-      "properties": {
-        "width": { "type": "number" },
-        "height": { "type": "number" },
-        "scroll_x": { "type": "number" },
-        "scroll_y": { "type": "number" }
-      }
+    "context_sufficient": {
+      "type": "boolean",
+      "description": "Set by the extractor: whether the DOM alone gives enough context for the current screen, or whether the vision worker should also be invoked. Optional in Phase 1; required once the vision-gating flow lands."
     }
   }
 }
