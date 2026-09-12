@@ -30,6 +30,20 @@
               "interactive": { "type": "boolean" },
               "role": { "type": "string", "description": "ARIA role" },
               "value": { "type": "string", "description": "Input value (redacted if sensitive)" },
+              "is_redacted": {
+                "type": "boolean",
+                "description": "True if this element contained sensitive data that was redacted"
+              },
+              "redacted_types": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Categories of PII redacted from this element (e.g. ['EMAIL'], ['PASSWORD_FIELD'])"
+              },
+              "redacted_tokens": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Redaction token identifiers present in this element (e.g. ['[EMAIL_1]'])"
+              },
               "coordinates": {
                 "type": "array",
                 "description": "Bounding box [x, y, width, height] in viewport pixels",
@@ -138,6 +152,26 @@
         "total_tokens": {
           "type": "integer",
           "description": "Total count of unique tokens"
+        },
+        "token_types": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map of token identifier to PII category, e.g., {'[EMAIL_1]': 'EMAIL', '[PASSWORD_FIELD]': 'PASSWORD_FIELD'}"
+        },
+        "redacted_elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["element_id", "types", "tokens"],
+            "properties": {
+              "element_id": { "type": "string" },
+              "tag": { "type": "string" },
+              "selector": { "type": "string" },
+              "types": { "type": "array", "items": { "type": "string" } },
+              "tokens": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "description": "DOM element level breakdown of redacted sensitive fields"
         }
       }
     }

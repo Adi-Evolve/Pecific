@@ -130,9 +130,14 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
   if (sanitizedDOM.elements && Array.isArray(sanitizedDOM.elements)) {
     for (const element of sanitizedDOM.elements) {
       const matches = matchesByElement[element.id] || [];
-      if (matches.length === 0 && element.type !== 'password') continue;
+      if (matches.length === 0 && element.type !== 'password') {
+        element.is_redacted = false;
+        continue;
+      }
 
       let elementModified = false;
+      const elementRedactedTypes = new Set();
+      const elementRedactedTokens = new Set();
 
       // Process text content
       if (element.text) {
@@ -141,6 +146,22 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
           element.text = result.text;
           elementModified = true;
           totalTokensMasked += result.tokensCreated;
+          result.types.forEach(t => elementRedactedTypes.add(t));
+          result.tokens.forEach(t => elementRedactedTokens.add(t));
+          updateBreakdown(piiBreakdown, matches);
+          updateDetectionMethods(detectionMethods, matches);
+        }
+      }
+
+      // Process input value (for form inputs containing PII)
+      if (element.value && element.type !== 'password') {
+        const result = replaceTextWithTokens(element.value, matches, redactionMap, valueToToken, tokenAudit, element.id);
+        if (result.modified) {
+          element.value = result.text;
+          elementModified = true;
+          totalTokensMasked += result.tokensCreated;
+          result.types.forEach(t => elementRedactedTypes.add(t));
+          result.tokens.forEach(t => elementRedactedTokens.add(t));
           updateBreakdown(piiBreakdown, matches);
           updateDetectionMethods(detectionMethods, matches);
         }
@@ -152,6 +173,8 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
         if (result.modified) {
           element.placeholder = result.text;
           elementModified = true;
+          result.types.forEach(t => elementRedactedTypes.add(t));
+          result.tokens.forEach(t => elementRedactedTokens.add(t));
         }
       }
 
@@ -161,6 +184,8 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
         if (result.modified) {
           element.href = result.text;
           elementModified = true;
+          result.types.forEach(t => elementRedactedTypes.add(t));
+          result.tokens.forEach(t => elementRedactedTokens.add(t));
         }
       }
 
@@ -170,6 +195,8 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
         element.value = '[PASSWORD_FIELD]';
         elementModified = true;
         totalTokensMasked++;
+        elementRedactedTypes.add('PASSWORD_FIELD');
+        elementRedactedTokens.add('[PASSWORD_FIELD]');
         piiBreakdown.other++;
         detectionMethods.dom_attribute++;
         tokenAudit.push({
@@ -185,6 +212,11 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
 
       if (elementModified) {
         domMaskedFields++;
+        element.is_redacted = true;
+        element.redacted_types = Array.from(elementRedactedTypes);
+        element.redacted_tokens = Array.from(elementRedactedTokens);
+      } else {
+        element.is_redacted = false;
       }
     }
   }
@@ -198,8 +230,41 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
     }
   }
 
-  // Build the token manifest (sent to server — just the token names, not values)
-  const tokensUsed = Object.keys(redactionMap.tokens);
+  // Build token_types mapping, collect all tokens used, and build redacted_elements summary
+  const tokenTypes = {};
+  const allTokensUsedSet = new Set();
+  const redactedElements = [];
+
+  for (const [token, _] of Object.entries(redactionMap.tokens)) {
+    allTokensUsedSet.add(token);
+    const typeMatch = token.match(/^\[([A-Z_]+)(?:_\d+)?\]$/);
+    if (typeMatch) {
+      tokenTypes[token] = typeMatch[1];
+    }
+  }
+
+  if (sanitizedDOM.elements && Array.isArray(sanitizedDOM.elements)) {
+    for (const el of sanitizedDOM.elements) {
+      if (el.is_redacted) {
+        (el.redacted_tokens || []).forEach(t => {
+          allTokensUsedSet.add(t);
+          if (!tokenTypes[t]) {
+            const typeMatch = t.match(/^\[([A-Z_]+)(?:_\d+)?\]$/);
+            if (typeMatch) tokenTypes[t] = typeMatch[1];
+          }
+        });
+        redactedElements.push({
+          element_id: el.id,
+          tag: el.tag,
+          selector: el.selector || '',
+          types: el.redacted_types || [],
+          tokens: el.redacted_tokens || [],
+        });
+      }
+    }
+  }
+
+  const tokensUsed = Array.from(allTokensUsedSet);
 
   return {
     sanitizedDOM,
@@ -214,6 +279,8 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
     tokenManifest: {
       tokens_used: tokensUsed,
       total_tokens: tokensUsed.length,
+      token_types: tokenTypes,
+      redacted_elements: redactedElements,
     },
     tokenAudit,
   };
@@ -234,11 +301,13 @@ export function getPIICategory(type) {
     case 'PAN':
     case 'CARD':
     case 'PASSWORD_FIELD':
+    case 'OTP':
       return 'SPII';
     case 'EMAIL':
     case 'PHONE':
     case 'NAME':
     case 'UPI':
+    case 'AVATAR':
       return 'PII';
     default:
       return 'CONTEXTUAL';
@@ -269,6 +338,8 @@ function replaceTextWithTokens(text, matches, redactionMap, valueToToken = new M
 
   let resultText = text;
   let tokensCreated = 0;
+  const typesUsed = new Set();
+  const tokensUsed = new Set();
 
   for (const match of sortedMatches) {
     const value = match.value;
@@ -297,9 +368,16 @@ function replaceTextWithTokens(text, matches, redactionMap, valueToToken = new M
     // Replace all occurrences of this value in the text
     // Use a simple string replace (not regex) to avoid special character issues
     let idx = resultText.indexOf(value);
+    let valueReplaced = false;
     while (idx !== -1) {
       resultText = resultText.substring(0, idx) + token + resultText.substring(idx + value.length);
       idx = resultText.indexOf(value, idx + token.length);
+      valueReplaced = true;
+    }
+
+    if (valueReplaced) {
+      typesUsed.add(match.type);
+      tokensUsed.add(token);
     }
   }
 
@@ -307,6 +385,8 @@ function replaceTextWithTokens(text, matches, redactionMap, valueToToken = new M
     text: resultText,
     modified: resultText !== text,
     tokensCreated,
+    types: Array.from(typesUsed),
+    tokens: Array.from(tokensUsed),
   };
 }
 
@@ -565,6 +645,7 @@ export function redactIncrementalDOM(previousRawDOM, newRawDOM, scanFn, sessionI
       prev.text !== el.text ||
       prev.placeholder !== el.placeholder ||
       prev.href !== el.href ||
+      prev.value !== el.value ||
       prev.type !== el.type
     ) {
       // Modified element

@@ -149,6 +149,7 @@ async function sanitize(params) {
     id: el.id,
     text: el.text || '',
     placeholder: el.placeholder || '',
+    value: el.value || '',
     tag: el.tag || '',
     type: el.type || '',
     parentTag: el.parentTag || '',
@@ -218,23 +219,41 @@ async function sanitize(params) {
   // ── Phase D: Merge + Deduplicate all DOM matches ──────────────────────
   const mergedElementMatches = mergeElementMatches(regexMatches, nerMatches);
 
-  // ── Phase E: Parallel Redaction (DOM + Image) ─────────────────────────
+  // ── Phase E: Redaction (DOM + Image) ─────────────────────────────────
   const phaseEStart = performance.now();
 
-  const [domRedaction, imageRedaction] = await Promise.allSettled([
-    Promise.resolve(redactDOM(domSnapshot, mergedElementMatches, sessionId)),
-    screenshot 
-      ? redactImage(screenshot, faceBBs, ocrPIIRegions) 
-      : Promise.resolve({ redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 }),
-  ]);
+  let domResult;
+  try {
+    domResult = redactDOM(domSnapshot, mergedElementMatches, sessionId);
+  } catch (err) {
+    console.error('[Privacy Worker] redactDOM error:', err);
+    domResult = {
+      sanitizedDOM: domSnapshot,
+      redactionMap: { tokens: {} },
+      privacyStats: { pii_tokens_masked: 0, dom_masked_fields: 0 },
+      tokenManifest: { tokens_used: [], total_tokens: 0 },
+    };
+  }
 
-  const domResult = domRedaction.status === 'fulfilled' 
-    ? domRedaction.value 
-    : { sanitizedDOM: domSnapshot, redactionMap: { tokens: {} }, privacyStats: { pii_tokens_masked: 0, dom_masked_fields: 0 }, tokenManifest: { tokens_used: [], total_tokens: 0 } };
-  
-  const imageResult = imageRedaction.status === 'fulfilled'
-    ? imageRedaction.value
-    : { redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 };
+  // Extract DOM element bounding boxes that contain redacted PII to blackout on screenshot
+  const domPIIRegions = (domResult.sanitizedDOM?.elements || [])
+    .filter(el => el.is_redacted && Array.isArray(el.coordinates) && el.coordinates.length === 4)
+    .map(el => ({
+      bbox: el.coordinates,
+      type: (el.redacted_types && el.redacted_types[0]) || 'DOM_PII',
+      elementId: el.id,
+    }));
+
+  const allImagePIIRegions = [...ocrPIIRegions, ...domPIIRegions];
+
+  let imageResult = { redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 };
+  if (screenshot) {
+    try {
+      imageResult = await redactImage(screenshot, faceBBs, allImagePIIRegions);
+    } catch (err) {
+      console.error('[Privacy Worker] redactImage error:', err);
+    }
+  }
 
   const phaseETime = Math.round(performance.now() - phaseEStart);
 

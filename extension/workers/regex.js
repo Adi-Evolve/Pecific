@@ -25,6 +25,10 @@ export const PII_TYPES = {
   IFSC: 'IFSC',
   PASSPORT: 'PASSPORT',
   PASSWORD_FIELD: 'PASSWORD_FIELD',
+  OTP: 'OTP',
+  NAME: 'NAME',
+  ADDRESS: 'ADDRESS',
+  AVATAR: 'AVATAR',
   SSN: 'SSN',
   VOTER_ID: 'VOTER_ID',
   DRIVING_LICENSE: 'DL',
@@ -127,6 +131,12 @@ const DOB_LABELS = new Set([
 const PASSPORT_LABELS = new Set([
   'passport', 'passport number', 'passport no', 'passport #',
   'travel document', 'passport id',
+]);
+
+/** OTP / Verification code labels */
+const OTP_LABELS = new Set([
+  'otp', 'verification code', 'verify', 'one-time password', 'security code',
+  'passcode', 'verification', 'auth code', 'enter code', 'your code',
 ]);
 
 /** Non-sensitive IPs to skip */
@@ -535,6 +545,26 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
+  // ── 13. OTP / Verification Codes (contextual — requires nearby OTP label) ──
+  if (hasContextLabel(context, OTP_LABELS)) {
+    const re = /\b\d{4,8}\b/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+
+      // Must not be part of a longer digit sequence
+      const charBefore = start > 0 ? text[start - 1] : ' ';
+      const charAfter = end < text.length ? text[end] : ' ';
+      if (/\d/.test(charBefore) || /\d/.test(charAfter)) continue;
+
+      addMatch(PII_TYPES.OTP, value, start, end);
+    }
+  }
+
   // Sort matches by position (start index)
   matches.sort((a, b) => a.start - b.start);
 
@@ -564,6 +594,7 @@ export function scanDOMElements(elements) {
 
     const textMatches = el.text ? scanRegexPII(el.text, context) : [];
     const placeholderMatches = el.placeholder ? scanRegexPII(el.placeholder, context) : [];
+    const valueMatches = (el.value && el.type !== 'password') ? scanRegexPII(el.value, context) : [];
 
     // For password inputs, mark the whole element
     if (el.type === 'password') {
@@ -577,7 +608,100 @@ export function scanDOMElements(elements) {
       });
     }
 
-    const allMatches = [...textMatches, ...placeholderMatches];
+    // Contextual DOM attribute heuristics for form inputs:
+    const labelContext = `${el.selector || ''} ${el.nearbyLabels || ''} ${el.placeholder || ''} ${el.id || ''}`.toLowerCase();
+
+    // 1. Credit card input field
+    if (el.value && /(?:addcreditcardnumber|card[-_\s]?number|credit[-_\s]?card)/i.test(labelContext)) {
+      if (/\d{4}/.test(el.value) && !valueMatches.some(m => m.type === PII_TYPES.CREDIT_CARD)) {
+        valueMatches.push({
+          type: PII_TYPES.CREDIT_CARD,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 2. Cardholder nickname / name field
+    if (el.value && /(?:cardholder|nickname|name\s*on\s*card|account\s*holder)/i.test(labelContext)) {
+      if (/[a-zA-Z]{2,}/.test(el.value) && !valueMatches.some(m => m.type === PII_TYPES.NAME)) {
+        valueMatches.push({
+          type: PII_TYPES.NAME,
+          value: el.value.trim(),
+          start: 0,
+          end: el.value.trim().length,
+          confidence: 0.90,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 3. Address container or input
+    if (el.text && /(?:deliver(?:ing)? to|shipping address|delivery address|home address)/i.test(labelContext + ' ' + el.text)) {
+      if (/(?:flat|building|path|chs|bazar|road|street|nagar|sector|\b\d{6}\b)/i.test(el.text) && !textMatches.some(m => m.type === PII_TYPES.ADDRESS)) {
+        textMatches.push({
+          type: PII_TYPES.ADDRESS,
+          value: el.text.trim(),
+          start: 0,
+          end: el.text.trim().length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 4. Greeting / Account user name: e.g. "Hello, Adi"
+    if (el.text && /(?:nav[-_]?link[-_]?account|user[-_]?profile|account[-_]?list)/i.test(labelContext)) {
+      const greetingMatch = el.text.match(/\b(?:hello|hi|welcome)[,\s]+([a-zA-Z]{2,})/i);
+      if (greetingMatch && !textMatches.some(m => m.type === PII_TYPES.NAME)) {
+        const nameVal = greetingMatch[1];
+        const startIdx = el.text.indexOf(nameVal);
+        textMatches.push({
+          type: PII_TYPES.NAME,
+          value: nameVal,
+          start: startIdx,
+          end: startIdx + nameVal.length,
+          confidence: 0.85,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 5. User profile image / avatar icon
+    if (/(?:avatar|profile[-_]?image|profile[-_]?photo|profile[-_]?pic|user[-_]?avatar|account[-_]?avatar)/i.test(labelContext) ||
+        (el.role === 'img' && /(?:avatar|profile|user)/i.test(labelContext))) {
+      if (!textMatches.some(m => m.type === PII_TYPES.AVATAR)) {
+        textMatches.push({
+          type: PII_TYPES.AVATAR,
+          value: el.text || '[USER_AVATAR]',
+          start: 0,
+          end: (el.text || '[USER_AVATAR]').length,
+          confidence: 0.95,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    // 6. First name / Last name / Full name / Instructor profile fields
+    const targetVal = (el.value || el.text || '').trim();
+    if (targetVal && /(?:first[-_\s]?name|last[-_\s]?name|full[-_\s]?name|given[-_\s]?name|family[-_\s]?name|instructor|faculty)/i.test(labelContext)) {
+      if (/^[a-zA-Z\s.'-]{2,40}$/.test(targetVal) && !valueMatches.some(m => m.type === PII_TYPES.NAME) && !textMatches.some(m => m.type === PII_TYPES.NAME)) {
+        const matchesList = el.value ? valueMatches : textMatches;
+        matchesList.push({
+          type: PII_TYPES.NAME,
+          value: targetVal,
+          start: 0,
+          end: targetVal.length,
+          confidence: 0.90,
+          method: 'DOM_ATTRIBUTE',
+        });
+      }
+    }
+
+    const allMatches = [...textMatches, ...placeholderMatches, ...valueMatches];
     if (allMatches.length > 0) {
       results.push({
         elementId: el.id,

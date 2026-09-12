@@ -67,9 +67,13 @@ export interface SanitizedElement {
   placeholder?: string;
   href?: string;
   type?: string;
+  value?: string;
   interactive?: boolean;
   role?: string;
   coordinates?: [number, number, number, number];
+  is_redacted?: boolean;
+  redacted_types?: string[];
+  redacted_tokens?: string[];
 }
 
 export interface SanitizedDOM {
@@ -105,6 +109,19 @@ export interface PrivacyStats {
   dom_masked_fields: number;
 }
 
+export interface TokenManifest {
+  tokens_used: string[];
+  total_tokens: number;
+  token_types?: Record<string, string>;
+  redacted_elements?: Array<{
+    element_id: string;
+    tag?: string;
+    selector?: string;
+    types: string[];
+    tokens: string[];
+  }>;
+}
+
 export interface UserQueryPayload {
   query: string;
   current_url: string;
@@ -115,6 +132,7 @@ export interface UserQueryPayload {
   vault_manifest: VaultManifest;
   redacted_screenshot?: string; // base64 data URL
   privacy_stats?: PrivacyStats;
+  token_manifest?: TokenManifest;
 }
 
 export interface StepResultPayload {
