@@ -1,21 +1,24 @@
-// extension/workers/vision-worker.js
-importScripts('../lib/ort.min.js'); // use the non-webgpu-specific build; execution providers chosen at runtime
+importScripts('../lib/ort/ort.webgpu.min.js');
 
-let session = null;
+const workerUrl = self.location.href;
+const extensionRoot = workerUrl.substring(0, workerUrl.indexOf('/workers/'));
+ort.env.wasm.wasmPaths = `${extensionRoot}/lib/ort/`;
+
+const sessions = {};
 let backend = null;
 
-async function initSession(modelPath) {
+async function initSession(name, modelPath) {
   for (const ep of ["webgpu", "wasm"]) {
     try {
       if (ep === "webgpu" && !("gpu" in self.navigator)) continue;
-      session = await ort.InferenceSession.create(modelPath, { executionProviders: [ep] });
+      sessions[name] = await ort.InferenceSession.create(modelPath, { executionProviders: [ep] });
       backend = ep;
       return;
     } catch (e) {
-      console.warn(`vision-worker: ${ep} failed`, e);
+      console.warn(`vision-worker: ${name}/${ep} failed`, e);
     }
   }
-  throw new Error("vision-worker: no execution provider available");
+  throw new Error(`vision-worker: no execution provider available for ${name}`);
 }
 
 async function preprocessImage(imageBitmap) {
@@ -23,15 +26,35 @@ async function preprocessImage(imageBitmap) {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(imageBitmap, 0, 0, 128, 128);
   const { data } = ctx.getImageData(0, 0, 128, 128);
-
-  // RGBA -> [0,1] normalized RGB, HWC -> CHW (this model wants 0..1, not -1..1)
   const float32 = new Float32Array(3 * 128 * 128);
   for (let i = 0; i < 128 * 128; i++) {
-    float32[i]                 = data[i * 4]     / 255.0; // R
-    float32[128 * 128 + i]     = data[i * 4 + 1] / 255.0; // G
-    float32[2 * 128 * 128 + i] = data[i * 4 + 2] / 255.0; // B
+    float32[i]                 = data[i * 4]     / 255.0;
+    float32[128 * 128 + i]     = data[i * 4 + 1] / 255.0;
+    float32[2 * 128 * 128 + i] = data[i * 4 + 2] / 255.0;
   }
   return new ort.Tensor("float32", float32, [1, 3, 128, 128]);
+}
+
+function decodeFaces(results, origWidth, origHeight) {
+  const outputTensor = results[sessions.face.outputNames[0]];
+  const dims = outputTensor.dims;
+  const flatData = outputTensor.data;
+
+  let numDetections;
+  if (dims.length === 3) numDetections = dims[1];       // normal case: [1, N, 16]
+  else if (dims.length === 2) numDetections = 1;        // observed quirk: single detection collapses to [1, 16]
+  else numDetections = Math.floor(flatData.length / 16); // safety fallback
+
+  const faces_detected = [];
+  for (let i = 0; i < numDetections; i++) {
+    const b = flatData.slice(i * 16, i * 16 + 16);
+    const [topY, topX, botY, botX] = b;
+    const x1 = topX * origWidth, y1 = topY * origHeight;
+    const x2 = botX * origWidth, y2 = botY * origHeight;
+    if (x2 - x1 < 5 || y2 - y1 < 5) continue;
+    faces_detected.push({ bbox: [x1, y1, x2, y2], confidence: null });
+  }
+  return faces_detected;
 }
 
 async function runInference(imageBitmap, origWidth, origHeight) {
@@ -42,45 +65,105 @@ async function runInference(imageBitmap, origWidth, origHeight) {
     max_detections: new ort.Tensor("int64", [BigInt(25)], [1]),
     iou_threshold: new ort.Tensor("float32", [0.3], [1])
   };
-  const results = await session.run(feeds);
+  const results = await sessions.face.run(feeds);
   return decodeFaces(results, origWidth, origHeight);
 }
 
-function decodeFaces(results, origWidth, origHeight) {
-  const outputNames = session.outputNames; // log this once to confirm order: expect [boxes, scores]
-  const boxes = results[outputNames[0]].data;   // flat, 16 floats per detection
-  const scores = results[outputNames[1]].data;  // 1 float per detection
-  const numDetections = scores.length;
-
-  const faces_detected = [];
-  for (let i = 0; i < numDetections; i++) {
-    const b = boxes.slice(i * 16, i * 16 + 16);
-    const [topY, topX, botY, botX] = b; // normalized 0..1, per model card ordering
-    const x1 = topX * origWidth, y1 = topY * origHeight;
-    const x2 = botX * origWidth, y2 = botY * origHeight;
-    if (x2 - x1 < 5 || y2 - y1 < 5) continue; // matches the card's own filter for degenerate boxes
-    faces_detected.push({ bbox: [x1, y1, x2, y2], confidence: scores[i] });
+async function preprocessForMobileViT(imageBitmap) {
+  const canvas = new OffscreenCanvas(256, 256);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(imageBitmap, 0, 0, 256, 256);
+  const { data } = ctx.getImageData(0, 0, 256, 256);
+  const HW = 256 * 256;
+  const float32 = new Float32Array(3 * HW);
+  for (let i = 0; i < HW; i++) {
+    float32[i]          = data[i * 4 + 2] / 255.0;
+    float32[HW + i]      = data[i * 4 + 1] / 255.0;
+    float32[2 * HW + i] = data[i * 4]     / 255.0;
   }
-  return faces_detected;
+  return new ort.Tensor("float32", float32, [1, 3, 256, 256]);
+}
+
+function softmax(logits) {
+  const max = Math.max(...logits);
+  const exps = logits.map(v => Math.exp(v - max));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(v => v / sum);
+}
+
+async function classifyScreen(imageBitmap) {
+  const inputTensor = await preprocessForMobileViT(imageBitmap);
+  const inputName = sessions.screen.inputNames[0];
+  const results = await sessions.screen.run({ [inputName]: inputTensor });
+  const outputName = sessions.screen.outputNames[0];
+  const logits = Array.from(results[outputName].data);
+  const probs = softmax(logits);
+  let bestIdx = 0;
+  for (let i = 1; i < probs.length; i++) if (probs[i] > probs[bestIdx]) bestIdx = i;
+  return {
+    screen_type: "unknown",
+    confidence: probs[bestIdx],
+    confidence_basis: "mobilevit_image_class",
+    predicted_class: bestIdx,
+    model_output: logits
+  };
+}
+
+function mergeVisionContext({ faces_detected, screen_type, confidence, backend, processing_ms, textPiiRegions = [] }) {
+  const pii_regions = [
+    ...faces_detected.map(f => ({ type: "face", bbox: f.bbox })),
+    ...textPiiRegions.map(r => ({ type: "text_pii", bbox: r.bbox, label: r.label }))
+  ];
+  return { screen_type, confidence, faces_detected, pii_regions, backend, processing_ms };
 }
 
 self.onmessage = async (e) => {
-  const { type, modelPath, imageData } = e.data;
+  const { type } = e.data;
+
+  // extension/workers/vision-worker.js — add this branch inside self.onmessage, anywhere alongside the others
+if (type === "DEBUG_NAMES") {
+  self.postMessage({
+    type: "DEBUG_NAMES_OK",
+    face: { inputs: sessions.face.inputNames, outputs: sessions.face.outputNames },
+    screen: { inputs: sessions.screen.inputNames, outputs: sessions.screen.outputNames }
+  });
+}
+
   if (type === "INIT") {
     try {
-      await initSession(modelPath);
-      self.postMessage({ type: "INIT_OK", backend, outputNames: session.outputNames });
+      await initSession("face", e.data.faceModelPath);
+      await initSession("screen", e.data.screenModelPath);
+      self.postMessage({ type: "INIT_OK", backend });
     } catch (err) {
       self.postMessage({ type: "INIT_FAIL", error: err.message });
     }
   }
+
   if (type === "DETECT") {
     try {
-      const bitmap = await createImageBitmap(imageData);
+      const bitmap = await createImageBitmap(e.data.imageData);
       const faces_detected = await runInference(bitmap, bitmap.width, bitmap.height);
-      self.postMessage({ type: "DETECT_OK", faces_detected });
+      self.postMessage({ type: "DETECT_OK", faces_detected, source: e.data.source });
     } catch (err) {
-      self.postMessage({ type: "DETECT_FAIL", error: err.message });
+      self.postMessage({ type: "DETECT_FAIL", error: err.message, source: e.data.source });
+    }
+  }
+
+  if (type === "ANALYZE_SCREEN") {
+    try {
+      const start = performance.now();
+      const bitmap = await createImageBitmap(e.data.imageData);
+      const faces_detected = await runInference(bitmap, bitmap.width, bitmap.height);
+      const { screen_type, confidence, predicted_class, model_output } = await classifyScreen(bitmap);
+      const processing_ms = Math.round(performance.now() - start);
+      const vision_context = {
+        ...mergeVisionContext({ faces_detected, screen_type, confidence, backend, processing_ms }),
+        predicted_class,
+        model_output
+      };
+      self.postMessage({ type: "ANALYZE_SCREEN_OK", vision_context, source: e.data.source });
+    } catch (err) {
+      self.postMessage({ type: "ANALYZE_SCREEN_FAIL", error: err.message, source: e.data.source });
     }
   }
 };

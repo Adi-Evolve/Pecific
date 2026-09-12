@@ -7,7 +7,11 @@
       "type": "string",
       "enum": ["search_results", "product_page", "checkout", "login_page", "cart", "form", "unknown"]
     },
-    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "confidence_basis": {
+      "type": "string",
+      "enum": ["mobilevit_image_class", "screen_class"]
+    },
     "faces_detected": {
       "type": "array",
       "items": {
@@ -15,7 +19,7 @@
         "required": ["bbox", "confidence"],
         "properties": {
           "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
-          "confidence": { "type": "number" }
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
         }
       }
     },
