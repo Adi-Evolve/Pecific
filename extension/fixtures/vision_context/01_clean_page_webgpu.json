@@ -1,0 +1,8 @@
+{
+  "screen_type": "search_results",
+  "confidence": 0.94,
+  "faces_detected": [],
+  "pii_regions": [],
+  "backend": "webgpu",
+  "processing_ms": 18
+}
