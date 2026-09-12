@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionStep",
+  "description": "Structured execution command returned by Server LLM planner (R5) to Extension Content Script Action Executor (R2).",
+  "type": "object",
+  "required": ["id", "action"],
+  "properties": {
+    "id": {
+      "type": "integer",
+      "description": "Sequential step index in the plan (1-based)"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "NAVIGATE",
+        "CLICK",
+        "TYPE",
+        "TYPE_FROM_VAULT",
+        "PRESS_KEY",
+        "HOVER",
+        "SCROLL",
+        "SELECT",
+        "WAIT",
+        "SCREENSHOT",
+        "EXTRACT",
+        "NEW_TAB",
+        "SWITCH_TAB",
+        "CLOSE_TAB",
+        "DISMISS_POPUP",
+        "CAPTCHA_HANDOFF",
+        "REPORT_RESULT"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "selector": { "type": "string", "description": "CSS selector for DOM target" },
+        "url": { "type": "string", "description": "Target URL for NAVIGATE action" },
+        "coordinates": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[x, y] pixel coordinates for VISION mode clicks"
+        },
+        "text": { "type": "string", "description": "Text matching hint for ambiguous selectors" },
+        "tab_id": { "type": "integer", "description": "Target tab ID for tab operations" },
+        "tab_purpose": { "type": "string" }
+      }
+    },
+    "value": {
+      "type": "string",
+      "description": "Text value to enter for TYPE action"
+    },
+    "key": {
+      "type": "string",
+      "description": "Key identifier for PRESS_KEY (e.g. Enter, Tab, Escape)"
+    },
+    "vault_key": {
+      "type": "string",
+      "description": "Credential key identifier for TYPE_FROM_VAULT (e.g. 'email', 'password', 'card_cvv')"
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": ["DOM", "VISION", "HYBRID"],
+      "default": "DOM"
+    },
+    "protocol_level": {
+      "type": "string",
+      "enum": ["SAFE", "CAUTION", "CRITICAL", "FORBIDDEN"],
+      "default": "SAFE"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable explanation of what this step does"
+    },
+    "verify": {
+      "type": "object",
+      "required": ["method", "condition"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["DOM_CHECK", "URL_CHECK", "SCREENSHOT"]
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition expression to confirm step succeeded"
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "required": ["action", "reason"],
+      "properties": {
+        "action": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "default": 5000,
+      "description": "Execution timeout in milliseconds"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Duration for WAIT action in milliseconds"
+    }
+  }
+}

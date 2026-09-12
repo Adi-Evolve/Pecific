@@ -64,8 +64,15 @@ Thumbs.db
 
 # --- Fixture outputs / scratch (keep committed fixtures, ignore generated test output) ---
 fixtures/generated/
+fixtures/*.png
+fixtures/screenshots/
+fixtures/screenshot_test_harness.html
 tmp/
 scratch/
+scripts/build_real_screenshot_doms.py
+scripts/generate_benchmark_screenshots.py
+scripts/scan_and_redact_screenshots.js
+scripts/update_test_harness_scenarios.py
 
 # --- Coverage / test artifacts ---
 coverage/

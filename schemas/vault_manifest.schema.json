@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VaultManifest",
+  "description": "Local credential presence manifest (owned by R4, consumed by R5). Only indicates whether sensitive data is present in client vault, NEVER transmits values.",
+  "type": "object",
+  "properties": {
+    "has_email": {
+      "type": "boolean",
+      "description": "Whether user email is stored in local vault"
+    },
+    "has_password": {
+      "type": "boolean",
+      "description": "Whether a password for current domain is stored in local vault"
+    },
+    "has_phone": {
+      "type": "boolean",
+      "description": "Whether user phone number is stored in local vault"
+    },
+    "has_address": {
+      "type": "boolean",
+      "description": "Whether user delivery address is stored in local vault"
+    },
+    "has_pan": {
+      "type": "boolean",
+      "description": "Whether user PAN card identifier is stored in local vault"
+    },
+    "has_aadhaar": {
+      "type": "boolean",
+      "description": "Whether user Aadhaar number is stored in local vault"
+    },
+    "has_card": {
+      "type": "boolean",
+      "description": "Whether payment card information is stored in local vault"
+    }
+  }
+}

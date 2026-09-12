@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DOMSnapshot",
+  "description": "Output of content script DOM extractor (R2). Captured raw interactive elements, metadata, and structural layout before privacy sanitization.",
+  "type": "object",
+  "required": ["elements_count", "elements"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Full URL of the captured page"
+    },
+    "title": {
+      "type": "string",
+      "description": "Page title"
+    },
+    "elements_count": {
+      "type": "integer",
+      "description": "Total number of interactive/semantic elements extracted"
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "tag"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable element ID assigned by extractor (e.g. e_1, e_search)"
+          },
+          "tag": {
+            "type": "string",
+            "description": "HTML tag name in uppercase (INPUT, BUTTON, A, etc.)"
+          },
+          "selector": {
+            "type": "string",
+            "description": "Unique CSS selector for DOM targeting"
+          },
+          "text": {
+            "type": "string",
+            "description": "Visible text content inside the element"
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "Placeholder attribute value"
+          },
+          "href": {
+            "type": "string",
+            "description": "Href attribute for links"
+          },
+          "type": {
+            "type": "string",
+            "description": "Input type (text, password, email, submit, etc.)"
+          },
+          "value": {
+            "type": "string",
+            "description": "Current input value"
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Whether the element responds to clicks, inputs, or keypresses"
+          },
+          "role": {
+            "type": "string",
+            "description": "ARIA role"
+          },
+          "parentTag": {
+            "type": "string",
+            "description": "Tag name of the immediate or semantic parent container"
+          },
+          "parentClass": {
+            "type": "string",
+            "description": "CSS classes of the parent container"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "ID of parent container"
+          },
+          "nearbyLabels": {
+            "type": "string",
+            "description": "Associated label or adjacent text for contextual identification"
+          },
+          "autocomplete": {
+            "type": "string",
+            "description": "Autocomplete attribute hint"
+          },
+          "coordinates": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "[x, y, width, height] viewport bounding box in pixels"
+          }
+        }
+      }
+    },
+    "forms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "action": { "type": "string" },
+          "method": { "type": "string" },
+          "inputs": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "scroll_x": { "type": "number" },
+        "scroll_y": { "type": "number" }
+      }
+    }
+  }
+}

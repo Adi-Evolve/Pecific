@@ -1,0 +1,196 @@
+{
+  "description": "Sample output from the Privacy Engine after sanitizing dom_with_pii.json. This is what the server (R5) receives. Note: redaction map is NOT included — it stays on the client.",
+  "sanitized_dom": {
+    "elements_count": 18,
+    "elements": [
+      {
+        "id": "e_1",
+        "tag": "H1",
+        "text": "Welcome, [NAME_1]!",
+        "interactive": false,
+        "role": "heading",
+        "coordinates": [100, 50, 400, 80]
+      },
+      {
+        "id": "e_2",
+        "tag": "SPAN",
+        "text": "[EMAIL_1]",
+        "interactive": false,
+        "coordinates": [100, 120, 300, 140]
+      },
+      {
+        "id": "e_3",
+        "tag": "SPAN",
+        "text": "[PHONE_1]",
+        "interactive": false,
+        "coordinates": [100, 160, 250, 180]
+      },
+      {
+        "id": "e_4",
+        "tag": "SPAN",
+        "text": "[CARD_1]",
+        "interactive": false,
+        "coordinates": [100, 200, 300, 220]
+      },
+      {
+        "id": "e_5",
+        "tag": "SPAN",
+        "text": "PAN: [PAN_1]",
+        "interactive": false,
+        "coordinates": [100, 240, 250, 260]
+      },
+      {
+        "id": "e_6",
+        "tag": "SPAN",
+        "text": "Aadhaar: [AADHAAR_1]",
+        "interactive": false,
+        "coordinates": [100, 280, 300, 300]
+      },
+      {
+        "id": "e_7",
+        "tag": "SPAN",
+        "text": "UPI: [UPI_1]",
+        "interactive": false,
+        "coordinates": [100, 320, 250, 340]
+      },
+      {
+        "id": "e_8",
+        "tag": "SPAN",
+        "text": "Date of Birth: [DOB_1]",
+        "interactive": false,
+        "coordinates": [100, 360, 300, 380]
+      },
+      {
+        "id": "e_9",
+        "tag": "SPAN",
+        "text": "Address: [ADDRESS_1]",
+        "interactive": false,
+        "coordinates": [100, 400, 500, 440]
+      },
+      {
+        "id": "e_10",
+        "tag": "INPUT",
+        "type": "password",
+        "text": "[PASSWORD_FIELD]",
+        "value": "[PASSWORD_FIELD]",
+        "interactive": true,
+        "coordinates": [100, 480, 300, 510]
+      },
+      {
+        "id": "e_11",
+        "tag": "SPAN",
+        "text": "IFSC: [IFSC_1]",
+        "interactive": false,
+        "coordinates": [100, 540, 250, 560]
+      },
+      {
+        "id": "e_12",
+        "tag": "SPAN",
+        "text": "Passport: [PASSPORT_1]",
+        "interactive": false,
+        "coordinates": [100, 580, 250, 600]
+      },
+      {
+        "id": "e_nav_1",
+        "tag": "A",
+        "text": "Amazon",
+        "href": "https://amazon.in",
+        "interactive": true,
+        "role": "link",
+        "coordinates": [500, 10, 560, 30]
+      },
+      {
+        "id": "e_nav_2",
+        "tag": "A",
+        "text": "Flipkart",
+        "href": "https://flipkart.com",
+        "interactive": true,
+        "role": "link",
+        "coordinates": [580, 10, 650, 30]
+      },
+      {
+        "id": "e_footer_1",
+        "tag": "SPAN",
+        "text": "Call us: 1800-123-4567 | support@example.com",
+        "interactive": false,
+        "coordinates": [200, 680, 600, 700]
+      },
+      {
+        "id": "e_product_1",
+        "tag": "SPAN",
+        "text": "boAt Bassheads 100 — ₹449",
+        "interactive": false,
+        "coordinates": [700, 200, 950, 230]
+      },
+      {
+        "id": "e_product_2",
+        "tag": "SPAN",
+        "text": "Sony WH-1000XM5 — ₹24,990",
+        "interactive": false,
+        "coordinates": [700, 240, 950, 270]
+      },
+      {
+        "id": "e_filter",
+        "tag": "A",
+        "text": "Mumbai",
+        "interactive": true,
+        "role": "link",
+        "coordinates": [50, 10, 120, 30]
+      }
+    ],
+    "forms": [
+      {
+        "id": "change-password-form",
+        "action": "/api/change-password",
+        "method": "POST",
+        "inputs": ["current_password", "new_password", "confirm_password"],
+        "vault_available": {
+          "password": true
+        }
+      }
+    ],
+    "viewport": { "width": 1280, "height": 720, "scroll_x": 0, "scroll_y": 0 }
+  },
+  "redacted_screenshot": "data:image/jpeg;base64,/9j/4AAQSkZJRg...(faces and PII regions blacked out)...",
+  "privacy_stats": {
+    "faces_redacted": 1,
+    "pii_tokens_masked": 11,
+    "dom_masked_fields": 10,
+    "ocr_regions_redacted": 0,
+    "pii_breakdown": {
+      "emails": 1,
+      "phones": 1,
+      "names": 1,
+      "addresses": 1,
+      "aadhaar": 1,
+      "pan": 1,
+      "cards": 1,
+      "dob": 1,
+      "upi": 1,
+      "other": 2
+    },
+    "detection_methods": {
+      "regex": 7,
+      "ner": 2,
+      "ocr_regex": 0,
+      "ocr_ner": 0,
+      "dom_attribute": 2
+    }
+  },
+  "token_manifest": {
+    "tokens_used": [
+      "[NAME_1]",
+      "[EMAIL_1]",
+      "[PHONE_1]",
+      "[CARD_1]",
+      "[PAN_1]",
+      "[AADHAAR_1]",
+      "[UPI_1]",
+      "[DOB_1]",
+      "[ADDRESS_1]",
+      "[IFSC_1]",
+      "[PASSPORT_1]"
+    ],
+    "total_tokens": 11
+  }
+}

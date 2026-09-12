@@ -1,0 +1,113 @@
+{
+  "description": "Clean DOM snapshot with ZERO PII — an e-commerce search results page. Used to verify the Privacy Engine produces zero false positives on normal content.",
+  "url": "https://www.flipkart.com/search?q=headphones",
+  "title": "Headphones - Buy Headphones Online at Best Prices in India",
+  "viewport": { "width": 1280, "height": 720, "scroll_x": 0, "scroll_y": 0 },
+  "elements_count": 10,
+  "elements": [
+    {
+      "id": "e_search",
+      "tag": "INPUT",
+      "type": "text",
+      "placeholder": "Search for products, brands and more",
+      "interactive": true,
+      "role": "searchbox",
+      "selector": "input[title='Search for products, brands and more']",
+      "parentTag": "FORM",
+      "parentClass": "search-bar",
+      "coordinates": [245, 18, 580, 48]
+    },
+    {
+      "id": "e_submit",
+      "tag": "BUTTON",
+      "text": "🔍",
+      "interactive": true,
+      "role": "button",
+      "parentTag": "FORM",
+      "parentClass": "search-bar",
+      "coordinates": [580, 18, 620, 48]
+    },
+    {
+      "id": "e_product_1",
+      "tag": "A",
+      "text": "boAt Bassheads 100 in Ear Wired Earphones with Mic",
+      "href": "/boat-bassheads-100/p/itm123",
+      "interactive": true,
+      "role": "link",
+      "parentTag": "DIV",
+      "parentClass": "product-card",
+      "coordinates": [120, 200, 350, 240]
+    },
+    {
+      "id": "e_price_1",
+      "tag": "SPAN",
+      "text": "₹449",
+      "interactive": false,
+      "parentTag": "DIV",
+      "parentClass": "price-display",
+      "coordinates": [120, 245, 180, 265]
+    },
+    {
+      "id": "e_rating_1",
+      "tag": "SPAN",
+      "text": "4.1 ★ (2,45,678 Ratings)",
+      "interactive": false,
+      "parentTag": "DIV",
+      "parentClass": "rating-display",
+      "coordinates": [120, 270, 300, 290]
+    },
+    {
+      "id": "e_product_2",
+      "tag": "A",
+      "text": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
+      "href": "/sony-wh-1000xm5/p/itm456",
+      "interactive": true,
+      "role": "link",
+      "parentTag": "DIV",
+      "parentClass": "product-card",
+      "coordinates": [120, 320, 350, 360]
+    },
+    {
+      "id": "e_price_2",
+      "tag": "SPAN",
+      "text": "₹24,990",
+      "interactive": false,
+      "parentTag": "DIV",
+      "parentClass": "price-display",
+      "coordinates": [120, 365, 200, 385]
+    },
+    {
+      "id": "e_filter_brand",
+      "tag": "A",
+      "text": "Samsung",
+      "interactive": true,
+      "role": "link",
+      "parentTag": "DIV",
+      "parentClass": "filter-sidebar",
+      "nearbyLabels": "Brand",
+      "coordinates": [20, 200, 100, 220]
+    },
+    {
+      "id": "e_filter_price",
+      "tag": "A",
+      "text": "Under ₹1,000",
+      "interactive": true,
+      "role": "link",
+      "parentTag": "DIV",
+      "parentClass": "filter-sidebar",
+      "nearbyLabels": "Price",
+      "coordinates": [20, 280, 100, 300]
+    },
+    {
+      "id": "e_footer_support",
+      "tag": "SPAN",
+      "text": "Need Help? Contact us at 1800-208-9898 | help@flipkart.com",
+      "interactive": false,
+      "parentTag": "FOOTER",
+      "parentClass": "footer-support",
+      "nearbyLabels": "Customer Support",
+      "coordinates": [300, 690, 700, 710]
+    }
+  ],
+  "forms": []
+}
