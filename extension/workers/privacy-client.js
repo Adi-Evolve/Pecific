@@ -24,9 +24,12 @@
  */
 
 import { scanDOMElements, scanRegexPII } from './regex.js';
+import { isNERReady, scanDOMElementsNER } from './ner.js';
 import { 
   redactDOM, 
+  redactImage,
   redactIncrementalDOM, 
+  mergeElementMatches,
   resolveToken as resolveTokenCore, 
   restoreTokens as restoreTokensCore, 
   resetCounters,
@@ -54,7 +57,9 @@ class ClientVaultStore {
           contextual_count: 0,
           total_masked: 0,
           tokens_active: [],
-          zero_egress_verified: true,
+          zero_egress_verified: false,
+          leaked_count: 0,
+          leaked_tokens: [],
           last_sanitized_at: null,
           token_manifest: { tokens_used: [], total_tokens: 0 },
         }
@@ -98,7 +103,7 @@ const globalVaultStore = new ClientVaultStore();
 
 // ─── Telemetry Computation Helper ──────────────────────────────────────────────
 
-function computeTelemetry(redactionResult, sessionId) {
+function computeTelemetry(redactionResult, sessionId, zeroEgressProof = null) {
   const audit = redactionResult.tokenAudit || [];
   let spiiCount = 0;
   let piiCount = 0;
@@ -112,6 +117,9 @@ function computeTelemetry(redactionResult, sessionId) {
   }
 
   const tokensUsed = redactionResult.tokenManifest?.tokens_used || [];
+  const isVerified = zeroEgressProof ? zeroEgressProof.safe : false;
+  const leakedCount = zeroEgressProof ? zeroEgressProof.leakedCount : 0;
+  const leakedTokens = zeroEgressProof ? zeroEgressProof.leakedTokens : [];
 
   return {
     sessionId: sessionId || 'active_session',
@@ -120,7 +128,9 @@ function computeTelemetry(redactionResult, sessionId) {
     contextual_count: contextualCount,
     total_masked: tokensUsed.length,
     tokens_active: tokensUsed,
-    zero_egress_verified: true,
+    zero_egress_verified: isVerified,
+    leaked_count: leakedCount,
+    leaked_tokens: leakedTokens,
     last_sanitized_at: new Date().toISOString(),
     token_manifest: redactionResult.tokenManifest || { tokens_used: [], total_tokens: 0 },
     breakdown: redactionResult.privacyStats?.pii_breakdown || {},
@@ -193,15 +203,35 @@ export async function sanitizeDOMSnapshot(domSnapshot, screenshot = null, option
   const sessionId = options.sessionId || 'active_session';
   const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-  // 1. Scan DOM elements for all PII types (Regex + Indian SPII patterns + DOM heuristics)
+  // 1. Scan DOM elements with Regex and contextual NER (if loaded)
   const elements = domSnapshot?.elements || [];
-  const elementMatches = scanDOMElements(elements);
+  const regexMatches = scanDOMElements(elements);
+  let nerMatches = [];
+  try {
+    if (typeof isNERReady === 'function' && isNERReady()) {
+      nerMatches = await scanDOMElementsNER(elements);
+    }
+  } catch (err) {
+    console.warn('[PrivacyClient] NER scan fallback:', err.message);
+  }
+  const elementMatches = mergeElementMatches(regexMatches, nerMatches);
 
   // 2. Perform DOM token substitution & construct client-only redaction map
   const redactResult = redactDOM(domSnapshot, elementMatches, sessionId);
 
-  // 3. Compute telemetry and cache in on-device vault
-  const telemetry = computeTelemetry(redactResult, sessionId);
+  // Store intermediate vault mapping before verification so verifyZeroEgress can cross-check secrets
+  globalVaultStore.setSessionData(
+    sessionId,
+    redactResult.redactionMap,
+    redactResult.tokenAudit,
+    null
+  );
+
+  // 3. Zero-egress assurance verification (Always run verification; never bypass)
+  const zeroEgressProof = verifyZeroEgress(redactResult.sanitizedDOM, sessionId);
+
+  // 4. Compute verified telemetry incorporating genuine proof and cache in on-device vault
+  const telemetry = computeTelemetry(redactResult, sessionId, zeroEgressProof);
   globalVaultStore.setSessionData(
     sessionId, 
     redactResult.redactionMap, 
@@ -209,10 +239,25 @@ export async function sanitizeDOMSnapshot(domSnapshot, screenshot = null, option
     telemetry
   );
 
-  // 4. Zero-egress assurance verification
-  const zeroEgressProof = options.verifyEgress !== false
-    ? verifyZeroEgress(redactResult.sanitizedDOM, sessionId)
-    : { safe: true, leakedCount: 0, leakedTokens: [], details: [] };
+  // 5. Visual Redaction: Draw blackouts over PII bounding boxes if screenshot is present
+  let redactedScreenshot = null;
+  if (screenshot) {
+    const domPIIRegions = (redactResult.sanitizedDOM?.elements || [])
+      .filter(el => el.is_redacted && Array.isArray(el.coordinates) && el.coordinates.length === 4)
+      .map(el => ({
+        bbox: el.coordinates,
+        type: (el.redacted_types && el.redacted_types[0]) || 'DOM_PII',
+        elementId: el.id,
+      }));
+
+    try {
+      const imgRes = await redactImage(screenshot, options.faceBBs || [], domPIIRegions);
+      redactedScreenshot = imgRes?.redactedBase64 || null;
+    } catch (err) {
+      console.error('[PrivacyClient] Visual blackout failed, withholding screenshot:', err);
+      redactedScreenshot = null; // Fail-closed: NEVER return raw unredacted pixels
+    }
+  }
 
   const durationMs = Math.round(
     (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime
@@ -221,7 +266,7 @@ export async function sanitizeDOMSnapshot(domSnapshot, screenshot = null, option
   return {
     sanitizedDOM: redactResult.sanitizedDOM,
     tokenManifest: redactResult.tokenManifest,
-    redactedScreenshot: screenshot, // Visual redaction can overlay if canvas is present
+    redactedScreenshot, // Guaranteed redacted or null
     privacyStats: {
       ...redactResult.privacyStats,
       sanitization_time_ms: durationMs,
@@ -245,7 +290,10 @@ export async function sanitizeDOMSnapshot(domSnapshot, screenshot = null, option
  */
 export async function redactIncrementalDOMSnapshot(previousDOM, newDOM, sessionId = 'active_session') {
   const result = redactIncrementalDOM(previousDOM, newDOM, scanDOMElements, sessionId);
-  const telemetry = computeTelemetry(result, sessionId);
+  globalVaultStore.setSessionData(sessionId, result.redactionMap, result.tokenAudit, null);
+
+  const zeroEgressProof = verifyZeroEgress(result.sanitizedDOM, sessionId);
+  const telemetry = computeTelemetry(result, sessionId, zeroEgressProof);
   globalVaultStore.setSessionData(sessionId, result.redactionMap, result.tokenAudit, telemetry);
 
   return {
@@ -254,6 +302,7 @@ export async function redactIncrementalDOMSnapshot(previousDOM, newDOM, sessionI
     privacyStats: result.privacyStats,
     incrementalStats: result.incrementalStats,
     telemetry,
+    zeroEgressProof,
     clientVault: {
       resolve: (token) => globalVaultStore.resolve(sessionId, token),
       restore: (text) => globalVaultStore.restore(sessionId, text),

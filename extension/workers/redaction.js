@@ -19,12 +19,25 @@
 let tokenCounters = {};
 let currentSessionId = null;
 
+/** Cache of element PII matches by sessionId and elementId for diff-only incremental scanning */
+const sessionElementMatchesCache = new Map();
+
+/** Session-scoped persistent token mappings across incremental action steps */
+const sessionVaultTokens = new Map();
+
 /**
  * Reset token counters (call when starting a new session or task)
  */
 export function resetCounters(sessionId = null) {
   tokenCounters = {};
   currentSessionId = sessionId;
+  if (sessionId) {
+    sessionElementMatchesCache.delete(sessionId);
+    sessionVaultTokens.delete(sessionId);
+  } else {
+    sessionElementMatchesCache.clear();
+    sessionVaultTokens.clear();
+  }
 }
 
 /**
@@ -87,6 +100,15 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
 
   const redactionMap = createRedactionMap(sessionId);
 
+  // Retrieve or initialize persistent session vault mapping to prevent token churn across incremental runs
+  let sessionVault = sessionVaultTokens.get(sessionId);
+  if (!sessionVault) {
+    sessionVault = { tokens: {}, valueToToken: new Map() };
+    if (sessionId) sessionVaultTokens.set(sessionId, sessionVault);
+  }
+  // Inherit existing tokens so incremental calls preserve previously assigned tokens
+  Object.assign(redactionMap.tokens, sessionVault.tokens);
+
   /** @type {Object.<string, number>} PII type → count breakdown */
   const piiBreakdown = {
     emails: 0,
@@ -119,11 +141,28 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
     matchesByElement[em.elementId] = em.matches;
   }
 
+  // Update session element matches cache for diff-only incremental retrieval (caches all elements, even with 0 matches)
+  let sessionCache = sessionElementMatchesCache.get(sessionId);
+  if (!sessionCache) {
+    sessionCache = new Map();
+    if (sessionId) sessionElementMatchesCache.set(sessionId, sessionCache);
+  }
+  if (domSnapshot?.elements && Array.isArray(domSnapshot.elements)) {
+    for (const el of domSnapshot.elements) {
+      sessionCache.set(el.id, matchesByElement[el.id] || []);
+    }
+  } else {
+    for (const em of elementMatches) {
+      sessionCache.set(em.elementId, em.matches);
+    }
+  }
+
   // Deep clone the DOM snapshot so we don't modify the original
   const sanitizedDOM = JSON.parse(JSON.stringify(domSnapshot));
 
   // Shared across all elements in this DOM snapshot to ensure consistent token reuse
-  const valueToToken = new Map();
+  // Seed with session-scoped valueToToken mappings
+  const valueToToken = new Map(sessionVault.valueToToken);
   const tokenAudit = [];
 
   // Process each element
@@ -266,6 +305,12 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
 
   const tokensUsed = Array.from(allTokensUsedSet);
 
+  // Synchronize newly created tokens and value mappings back to session vault
+  if (sessionVault) {
+    Object.assign(sessionVault.tokens, redactionMap.tokens);
+    valueToToken.forEach((tok, val) => sessionVault.valueToToken.set(val, tok));
+  }
+
   return {
     sanitizedDOM,
     redactionMap,
@@ -284,6 +329,54 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
     },
     tokenAudit,
   };
+}
+
+/**
+ * Merge and deduplicate element matches from multiple detection sources (Regex + NER).
+ *
+ * @param {Array<{elementId: string, matches: Array<object>}>} regexResults
+ * @param {Array<{elementId: string, matches: Array<object>}>} nerResults
+ * @returns {Array<{elementId: string, matches: Array<object>}>}
+ */
+export function mergeElementMatches(regexResults = [], nerResults = []) {
+  const byElement = new Map();
+
+  // Add regex matches (highest confidence)
+  for (const result of regexResults || []) {
+    if (!byElement.has(result.elementId)) {
+      byElement.set(result.elementId, []);
+    }
+    byElement.get(result.elementId).push(...result.matches);
+  }
+
+  // Add NER matches (with overlap check)
+  for (const result of nerResults || []) {
+    if (!byElement.has(result.elementId)) {
+      byElement.set(result.elementId, []);
+    }
+
+    const existing = byElement.get(result.elementId);
+
+    for (const nerMatch of result.matches) {
+      const overlapping = existing.find(
+        e => nerMatch.start < e.end && nerMatch.end > e.start
+      );
+
+      if (overlapping) {
+        if (nerMatch.confidence > overlapping.confidence) {
+          const idx = existing.indexOf(overlapping);
+          existing[idx] = nerMatch;
+        }
+      } else {
+        existing.push(nerMatch);
+      }
+    }
+  }
+
+  return Array.from(byElement.entries()).map(([elementId, matches]) => ({
+    elementId,
+    matches: matches.sort((a, b) => a.start - b.start),
+  }));
 }
 
 /**
@@ -666,15 +759,55 @@ export function redactIncrementalDOM(previousRawDOM, newRawDOM, scanFn, sessionI
     }
   }
 
-  // Scan only the changed elements
+  // 1. Scan strictly the changed elements (diff-only execution)
   const changedMatches = changedElements.length > 0 ? scanFn(changedElements) : [];
 
-  // Also retain any existing matches from unchanged elements
-  const previousMatches = scanFn(
-    newRawDOM.elements.filter(el => unchangedElementIds.has(el.id))
-  );
+  // 2. Retrieve previous matches for unchanged elements from session cache without re-scanning
+  let sessionCache = sessionElementMatchesCache.get(sessionId);
+  if (!sessionCache) {
+    sessionCache = new Map();
+    if (sessionId) sessionElementMatchesCache.set(sessionId, sessionCache);
+  }
 
-  const allMatches = [...previousMatches, ...changedMatches];
+  const unchangedMatches = [];
+  const uncachedUnchangedElements = [];
+
+  for (const elId of unchangedElementIds) {
+    if (sessionCache.has(elId)) {
+      unchangedMatches.push({
+        elementId: elId,
+        matches: sessionCache.get(elId),
+      });
+    } else {
+      const el = prevElementsById.get(elId);
+      if (el) uncachedUnchangedElements.push(el);
+    }
+  }
+
+  // If any unchanged element was not yet in cache (e.g. initial test without prior redactDOM call),
+  // seed cache for those elements only once
+  if (uncachedUnchangedElements.length > 0) {
+    const scannedUncached = scanFn(uncachedUnchangedElements);
+    const uncachedMap = {};
+    for (const em of scannedUncached) {
+      uncachedMap[em.elementId] = em.matches;
+      unchangedMatches.push(em);
+    }
+    for (const el of uncachedUnchangedElements) {
+      sessionCache.set(el.id, uncachedMap[el.id] || []);
+    }
+  }
+
+  // Update session cache with new/changed element matches
+  const changedMap = {};
+  for (const em of changedMatches) {
+    changedMap[em.elementId] = em.matches;
+  }
+  for (const el of changedElements) {
+    sessionCache.set(el.id, changedMap[el.id] || []);
+  }
+
+  const allMatches = [...unchangedMatches, ...changedMatches];
   const result = redactDOM(newRawDOM, allMatches, sessionId);
 
   return {

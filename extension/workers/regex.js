@@ -420,8 +420,44 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 5. Aadhaar ─────────────────────────────────────────────────────────
-  {
+  // ── 5. Indian Bank Account Number (contextual) — Scan BEFORE Aadhaar ────
+  // Reason: 12-digit bank accounts beginning with 2-9 look identical to Aadhaar numbers.
+  // When bank account context labels are present, prioritize Bank Account detection.
+  if (hasContextLabel(context, BANK_ACCOUNT_LABELS)) {
+    const re = new RegExp(PATTERNS.BANK_ACCOUNT.source, PATTERNS.BANK_ACCOUNT.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+      if (isPartOfLongerNumber(text, start, end)) continue;
+
+      addMatch(PII_TYPES.BANK_ACCOUNT, value, start, end);
+    }
+  }
+
+  // ── 6. EPFO UAN (12-digit Universal Account Number, contextual) ────────
+  // Reason: 12-digit UANs beginning with 2-9 must not be shadowed by Aadhaar.
+  if (hasContextLabel(context, UAN_LABELS)) {
+    const re = new RegExp(PATTERNS.EPFO_UAN.source, PATTERNS.EPFO_UAN.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const value = m[0];
+      const start = m.index;
+      const end = start + value.length;
+
+      if (isOverlapping(start, end)) continue;
+      if (isPartOfLongerNumber(text, start, end)) continue;
+
+      addMatch(PII_TYPES.EPFO_UAN, value, start, end);
+    }
+  }
+
+  // ── 7. Aadhaar (12 digits, Indian national ID) ─────────────────────────
+  // Note: Only evaluated if element is not explicitly labeled as Bank Account or EPFO UAN
+  if (!hasContextLabel(context, BANK_ACCOUNT_LABELS) && !hasContextLabel(context, UAN_LABELS)) {
     const re = new RegExp(PATTERNS.AADHAAR.source, PATTERNS.AADHAAR.flags);
     let m;
     while ((m = re.exec(text)) !== null) {
@@ -433,7 +469,7 @@ export function scanRegexPII(text, context = {}) {
       // Must be exactly 12 digits
       if (digits.length !== 12) continue;
 
-      // Skip if overlapping with an already-matched credit card
+      // Skip if overlapping with an already-matched credit card, bank account, or UAN
       if (isOverlapping(start, end)) continue;
 
       // Must not be part of a longer number
@@ -446,7 +482,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 6. PAN ─────────────────────────────────────────────────────────────
+  // ── 8. PAN ─────────────────────────────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.PAN.source, PATTERNS.PAN.flags);
     let m;
@@ -464,7 +500,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 7. Indian Phone Numbers ────────────────────────────────────────────
+  // ── 9. Indian Phone Numbers ────────────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.PHONE_INDIAN.source, PATTERNS.PHONE_INDIAN.flags);
     let m;
@@ -500,7 +536,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 8. International Phone Numbers ─────────────────────────────────────
+  // ── 10. International Phone Numbers ─────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.PHONE_INTL.source, PATTERNS.PHONE_INTL.flags);
     let m;
@@ -516,7 +552,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 9. IP Addresses ────────────────────────────────────────────────────
+  // ── 11. IP Addresses ────────────────────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.IP_V4.source, PATTERNS.IP_V4.flags);
     let m;
@@ -538,7 +574,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 10. IFSC Codes ────────────────────────────────────────────────────
+  // ── 12. IFSC Codes ────────────────────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.IFSC.source, PATTERNS.IFSC.flags);
     let m;
@@ -558,7 +594,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 11. Dates of Birth (contextual — requires nearby DOB label) ──────
+  // ── 13. Dates of Birth (contextual — requires nearby DOB label) ──────
   if (hasContextLabel(context, DOB_LABELS)) {
     const re = new RegExp(PATTERNS.DOB.source, PATTERNS.DOB.flags);
     let m;
@@ -573,7 +609,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 12. Passport Numbers (contextual — requires nearby passport label) ─
+  // ── 14. Passport Numbers (contextual — requires nearby passport label) ─
   if (hasContextLabel(context, PASSPORT_LABELS)) {
     const re = new RegExp(PATTERNS.PASSPORT.source, PATTERNS.PASSPORT.flags);
     let m;
@@ -593,7 +629,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 13. OTP / Verification Codes (contextual — requires nearby OTP label) ──
+  // ── 15. OTP / Verification Codes (contextual — requires nearby OTP label) ──
   if (hasContextLabel(context, OTP_LABELS)) {
     const re = /\b\d{4,8}\b/g;
     let m;
@@ -613,7 +649,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 14. Voter ID (EPIC) ────────────────────────────────────────────────
+  // ── 16. Voter ID (EPIC) ────────────────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.VOTER_ID.source, PATTERNS.VOTER_ID.flags);
     let m;
@@ -633,7 +669,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 15. Indian Driving License (DL) ────────────────────────────────────
+  // ── 17. Indian Driving License (DL) ────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.DRIVING_LICENSE.source, PATTERNS.DRIVING_LICENSE.flags);
     let m;
@@ -657,23 +693,7 @@ export function scanRegexPII(text, context = {}) {
     }
   }
 
-  // ── 16. EPFO UAN (12-digit Universal Account Number) ───────────────────
-  if (hasContextLabel(context, UAN_LABELS)) {
-    const re = new RegExp(PATTERNS.EPFO_UAN.source, PATTERNS.EPFO_UAN.flags);
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const value = m[0];
-      const start = m.index;
-      const end = start + value.length;
-
-      if (isOverlapping(start, end)) continue;
-      if (isPartOfLongerNumber(text, start, end)) continue;
-
-      addMatch(PII_TYPES.EPFO_UAN, value, start, end);
-    }
-  }
-
-  // ── 17. Vehicle Registration (RC) ──────────────────────────────────────
+  // ── 18. Vehicle Registration (RC) ──────────────────────────────────────
   {
     const re = new RegExp(PATTERNS.VEHICLE_RC.source, PATTERNS.VEHICLE_RC.flags);
     let m;
@@ -689,26 +709,11 @@ export function scanRegexPII(text, context = {}) {
       if (/[A-Za-z0-9]/.test(charBefore) || /[A-Za-z0-9]/.test(charAfter)) continue;
 
       const stateCode = value.slice(0, 2).toUpperCase();
-      const isBH = /^\d{2}\s*BH/i.test(value);
+      // Allow whitespace or hyphen in Bharat-series plates: e.g. 22 BH 1234 AA or 22-BH-1234-AA
+      const isBH = /^\d{2}[-\s]?BH/i.test(value);
       if (INDIAN_STATE_CODES.has(stateCode) || isBH || hasContextLabel(context, VEHICLE_RC_LABELS)) {
         addMatch(PII_TYPES.VEHICLE_RC, value, start, end);
       }
-    }
-  }
-
-  // ── 18. Indian Bank Account Number (contextual) ────────────────────────
-  if (hasContextLabel(context, BANK_ACCOUNT_LABELS)) {
-    const re = new RegExp(PATTERNS.BANK_ACCOUNT.source, PATTERNS.BANK_ACCOUNT.flags);
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const value = m[0];
-      const start = m.index;
-      const end = start + value.length;
-
-      if (isOverlapping(start, end)) continue;
-      if (isPartOfLongerNumber(text, start, end)) continue;
-
-      addMatch(PII_TYPES.BANK_ACCOUNT, value, start, end);
     }
   }
 

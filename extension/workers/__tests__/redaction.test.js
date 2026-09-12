@@ -452,6 +452,57 @@ test('redactIncrementalDOM re-scans only modified or added elements', () => {
   assertEqual(elMap['e4'].text, 'Phone: [PHONE_1]');
 });
 
+test('redactIncrementalDOM achieves true diff-only scanning without rescanning unchanged elements', () => {
+  const sessionId = 'test_diff_only_session';
+  resetCounters(sessionId);
+
+  const prevDOM = {
+    elements_count: 3,
+    elements: [
+      { id: 'e1', tag: 'H1', text: 'Dashboard' },
+      { id: 'e2', tag: 'SPAN', text: 'aditya@gmail.com' },
+      { id: 'e3', tag: 'DIV', text: 'Some static text' }
+    ]
+  };
+
+  // Initial scan of prevDOM
+  const initialMatches = scanDOMElements(prevDOM.elements);
+  const initialResult = redactDOM(prevDOM, initialMatches, sessionId);
+  assertEqual(initialResult.sanitizedDOM.elements[1].text, '[EMAIL_1]');
+
+  // Next step: e1, e2, e3 unchanged; e5 added with a PAN number
+  const nextDOM = {
+    elements_count: 4,
+    elements: [
+      { id: 'e1', tag: 'H1', text: 'Dashboard' },
+      { id: 'e2', tag: 'SPAN', text: 'aditya@gmail.com' },
+      { id: 'e3', tag: 'DIV', text: 'Some static text' },
+      { id: 'e5', tag: 'SPAN', text: 'PAN: ABCPE1234F' }
+    ]
+  };
+
+  let scanCount = 0;
+  const trackingScanFn = (elements) => {
+    scanCount += elements.length;
+    return scanDOMElements(elements);
+  };
+
+  const incResult = redactIncrementalDOM(prevDOM, nextDOM, trackingScanFn, sessionId);
+  assertEqual(scanCount, 1, 'Only exactly 1 changed element was scanned');
+  assertEqual(incResult.incrementalStats.unchanged, 3, '3 elements were identified as unchanged');
+  assertEqual(incResult.incrementalStats.changed, 1, '1 element was changed');
+
+  // Verify unchanged e2 kept its token [EMAIL_1] and did NOT create [EMAIL_2]
+  const elMap = {};
+  for (const el of incResult.sanitizedDOM.elements) {
+    elMap[el.id] = el;
+  }
+  assertEqual(elMap['e2'].text, '[EMAIL_1]');
+  assertEqual(elMap['e5'].text, 'PAN: [PAN_1]');
+  assertEqual(resolveToken(incResult.redactionMap, '[EMAIL_1]'), 'aditya@gmail.com');
+  assertEqual(resolveToken(incResult.redactionMap, '[PAN_1]'), 'ABCPE1234F');
+});
+
 // ─── Summary ───────────────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
