@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "iSIH Privacy-Preserving Browser Agent",
+  "version": "1.0",
+  "description": "Autonomous browser agent that redacts PII locally.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/index.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  }
+}

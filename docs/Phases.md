@@ -1,71 +1,75 @@
-# PrivacyLens — Development Phases & Milestone Deliverables
+# PrivacyLens (Pecific) — Development Phases & Milestone Deliverables
 
-This roadmap breaks the project into disciplined, ordered phases to ensure seamless multi-agent integration and complete requirements coverage for SIH PS26171.
-
----
-
-## Phase 0: Contract Schemas & Interface Standardization (Complete ✅)
-- **Objective:** Freeze all data exchange protocols so client and server components develop in parallel without integration drift.
-- **Key Deliverables:**
-  - `schemas/dom_snapshot.schema.json` (Content Script → Privacy Worker)
-  - `schemas/redacted_payload.schema.json` (Privacy Worker → Server)
-  - `schemas/vision_context.schema.json` (Vision Worker → Server)
-  - `schemas/action.schema.json` (Server Planner → Browser Executor)
-  - `schemas/vault_manifest.schema.json` (Client Vault Presence)
-  - `schemas/agent_message.schema.ts` (WebSocket Message Protocol Catalog)
+This document tracks the phased implementation across the project lifecycle, unifying the overarching architecture with Dev 1 (Extension Shell) and Dev 3 (Privacy Engine) deliverables.
 
 ---
 
-## Phase 1: Core Privacy Engine & Regex/NER Detection (Complete ✅)
-- **Objective:** Build on-device PII detection and tokenization engine with zero false positives on clean e-commerce pages.
-- **Key Deliverables:**
-  - `extension/workers/regex.js`: Multi-type PII scanner (Email, Phone, Aadhaar, PAN, Credit Card with Luhn, UPI, DOB, IP, IFSC, Passport, Password).
+## Phase 0: Kickoff, Contract Schemas & Interface Standardization (Complete ✅)
+- **Objective:** Agree on schemas, message protocols, and folder ownership so client and server develop in parallel without blocking.
+- **Deliverables:**
+  - `schemas/dom_snapshot.schema.json` (Dev 2 → Dev 3)
+  - `schemas/redacted_payload.schema.json` (Dev 3 → Dev 5)
+  - `schemas/vision_context.schema.json` (Dev 4 → Dev 5)
+  - `schemas/action.schema.json` (Dev 5 → Dev 2)
+  - `schemas/vault_manifest.schema.json` (Dev 3/4 Client Vault presence)
+  - `schemas/agent_message.schema.ts` (WebSocket Protocol Catalog)
+
+---
+
+## Phase 1: Foundation & Core Privacy Engine (Complete ✅)
+- **Dev 1 (Shell):**
+  - MV3 `manifest.json` with permissions (`activeTab`, `scripting`, `sidePanel`, etc.).
+  - `popup/` and `sidepanel/` HTML shells.
+  - `service-worker.js` message router skeleton.
+- **Dev 3 (Privacy):**
+  - `extension/workers/regex.js`: 11-category PII scanner (Email, Phone, Aadhaar, PAN, Luhn Credit Cards, UPI, DOB, IP, IFSC, Passwords).
   - `extension/workers/redaction.js`: Longest-match-first replacement, page-wide token deduplication, severity categorization.
-  - Comprehensive unit test suite: 36 regex tests (`regex.test.js`), 13 redaction tests (`redaction.test.js`).
+  - 36 regex tests (`regex.test.js`) + 13 redaction tests (`redaction.test.js`).
 
 ---
 
-## Phase 2: Structural Invariance & Server DOM Protocol (Complete ✅)
-- **Objective:** Guarantee that the sanitized DOM sent to the server maintains 100% structural fidelity while providing complete semantic awareness of blacked-out fields.
-- **Key Deliverables:**
-  - Element text and form `<input value="...">` token replacement.
-  - Element metadata enrichment: `is_redacted`, `redacted_types`, `redacted_tokens`.
-  - Top-level `token_manifest` with `tokens_used`, `token_types`, and `redacted_elements`.
-  - Client-only in-memory vault isolation.
-  - Server contract test suite: 45 tests (`dom_redaction_server.test.js`) verifying zero leakage and selector preservation.
+## Phase 2: Core Engine Build & DOM Structural Invariance (Complete ✅)
+- **Dev 1 (Shell):**
+  - Wire popup to service worker message passing.
+  - Create Approval Dialog UI component (visual only).
+  - Notification permissions setup.
+  - **Pecific UI Redesign:** Clean minimalist light theme base with dark mode toggle.
+- **Dev 3 (Privacy):**
+  - Input value masking (`<input value="...">`) and text node sanitization.
+  - Server-facing `token_manifest` (`tokens_used`, `token_types`, `redacted_elements`).
+  - Isolated client-only in-memory vault.
+  - 45 server contract tests (`dom_redaction_server.test.js`) + 15 adversarial tests (`adversarial.test.js`) — 109/109 tests passing.
 
 ---
 
-## Phase 3: Real-World Screenshot Testing & Visual Perception (Current 🔄)
-- **Objective:** Validate on-device perception against real-world complex websites (Eduplus login, Gmail OTP, Google account switcher, Amazon checkout and home).
-- **Key Deliverables:**
-  - Real screenshot test corpus in `fixtures/screenshots/`.
-  - Pixel-perfect visual blackout of sensitive text fields and user credentials.
-  - User profile image & avatar detection and blackout (Google profile 'A', Gmail avatar, browser user profile badges).
-  - Biometric face blackout via OpenCV Haar cascade / BlazeFace.
-  - Interactive HTML test harness (`fixtures/screenshot_test_harness.html`) for before/after visual and DOM inspection.
+## Phase 3: Client-Side Integration & Visual Redaction (In Progress 🔄)
+- **Objective:** Wire service worker to coordinate modules: query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
+- **Dev 3 / Privacy Deliverables:**
+  - Real screenshot testing across complex websites (Google Classroom, Eduplus Login, Gmail OTP, Amazon Deals, AWS Profile).
+  - Pixel-perfect visual blackout of sensitive text, account greetings, and PIN codes.
+  - Profile avatar detection (Hough circle analysis) and face detection (Haar cascade).
+  - On-device vision processor helper (`scripts/vision_processor.py`).
 
 ---
 
-## Phase 4: Browser Extension Architecture & Action Executor (Next 🚀)
-- **Objective:** Complete the Chromium MV3 browser extension with content script extraction, action execution, and sidepanel UI.
-- **Key Deliverables:**
-  - `extension/content/content.js`: Fast DOM snapshot extraction with viewport bounding boxes. Action executor dispatching native mouse/keyboard events.
-  - `extension/background/background.js`: Service worker managing WebSocket session, coordinating privacy/vision workers, and storing local client vault.
-  - `extension/ui/`: Sidepanel chat interface showing real-time agent thoughts, privacy audit badge counter, and action confirmations.
+## Phase 4: Client $\leftrightarrow$ Server Integration
+- **Objective:** Full round-trip integration over WebSocket.
+- **Deliverables:** Connect extension background script to FastAPI WebSocket server, stream sanitized DOM payload, and receive structured plan responses.
 
 ---
 
-## Phase 5: Server Reasoning, LLM Planner & Action Loop
-- **Objective:** Implement the FastAPI WebSocket server and Chain-of-Thought (CoT) LLM planner using sanitized DOM and screen context.
-- **Key Deliverables:**
-  - `server/app.py`: Real-time WebSocket server dispatching `USER_QUERY`, `STEP_RESULT`, `AGENT_ACTION`.
-  - `server/planner.py`: LLM agent (Llama 3 / Mistral via Ollama) generating structured actions targeting CSS selectors.
-  - `server/vlm.py`: Secondary visual grounding fallback using Qwen2.5-VL-7B when DOM selectors are dynamic or obscured.
+## Phase 5: Full Agentic Loop & Approval Dialog
+- **Objective:** End-to-end autonomous action with human-in-the-loop controls.
+- **Deliverables:** Wire the interactive approval dialog to real checkout/login events; execute native DOM actions (click, fill) resolving vault tokens locally.
 
 ---
 
-## Phase 6: End-to-End Integration, Evaluation & Demo Scenarios
+## Phase 6: Advanced Features & UX Polish
+- **Deliverables:** Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts.
+
+---
+
+## Phase 7: Hardening & Demo Evaluation Benchmarks
 - **Objective:** Demonstrate end-to-end autonomous execution on the 3 SIH evaluation benchmarks.
 - **Benchmark 1 (Recruitment Application):** Navigate Eduplus/Job portal, auto-fill profile using tokens, protect student email & password.
 - **Benchmark 2 (E-Commerce Purchase):** Navigate Amazon/Flipkart, add item to cart, proceed to checkout, blackout shipping address & card number.

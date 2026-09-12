@@ -1,4 +1,4 @@
-# PrivacyLens — Project Memory Log
+# PrivacyLens (Pecific) — Project Memory Log
 
 This running document records architectural decisions, completed work, active development items, and technical context to preserve continuity across all sessions.
 
@@ -9,11 +9,21 @@ This running document records architectural decisions, completed work, active de
 - **Problem Statement:** On-device Visual Perception for Light-weight Browser Agents
 - **Git Repo:** `https://github.com/Adi-Evolve/Pecific.git`
 - **Active Branch:** `feat/dev3-privacy-engine`
-- **Primary Role Focus:** Dev 3 (R3 - Privacy Engineer), owning privacy workers, PII scanners, redaction pipelines, contract schemas, and screenshot redaction testing.
+- **Ownership Focus:** Dev 3 (R3 - Privacy Engineer), collaborating with Dev 1 (Extension Shell & Orchestration), Dev 2 (DOM Execution), Dev 4 (Vision & Client Vault), Dev 5 (Server & LLM Planner), and Dev 6 (Server VLM).
 
 ---
 
-## 2. Key Architectural Decisions Made
+## 2. Current Status & Progress Summary
+- **Phase 0 (Contracts):** Complete ✅. All 6 frozen schemas merged in `schemas/`.
+- **Phase 1 & 2 (Extension Shell & Core Privacy):** Complete ✅.
+  - Dev 1 completed MV3 `manifest.json`, `popup/`, `sidepanel/`, `service-worker.js`, Approval Dialog UI, and Pecific Light/Dark theme redesign.
+  - Dev 3 completed 4-stage PII detection (`regex.js`), DOM structural invariance, server-facing `token_manifest`, and client-only in-memory vault.
+- **Automated Tests:** 109/109 tests passing (100% pass rate).
+- **Phase 3 (Client-Side Integration):** In progress 🔄. Preparing WebSocket client streaming and action execution loop.
+
+---
+
+## 3. Key Architectural Decisions Made
 
 1. **DOM Invariance over Destruction:**
    - Instead of stripping nodes from the DOM, we retain 100% of element tags, IDs, CSS selectors, ARIA roles, and bounding box coordinates.
@@ -31,20 +41,20 @@ This running document records architectural decisions, completed work, active de
 4. **Multi-Stage Hybrid Detection:**
    - Stage 1: Regex & checksums (Luhn for cards, Verhoeff for Aadhaar).
    - Stage 2: Contextual DOM attribute heuristics (input names, placeholders, labels).
-   - Stage 3: Visual Face and Profile Avatar detection (Haar cascade + circle/contour analysis).
+   - Stage 3: Visual Face and Profile Avatar detection (Haar cascade + Hough circle analysis).
    - Stage 4: OCR fallback for non-DOM image pixels.
 
-5. **Git Policy:**
-   - Local-only execution for testing results, generated screenshots, and payloads. No `git push` without user's explicit instruction.
+5. **Git & Fixture Policy:**
+   - Exclude bulky screenshot PNGs and large test fixture dumps from remote commits. Keep testing artifacts strictly local to maintain repository hygiene.
 
 ---
 
-## 3. What Has Been Completed ✅
+## 4. Completed Work ✅
 
 1. **Phase 0 Contract Schemas (`/schemas/`):**
    - All 6 schemas frozen: `dom_snapshot.schema.json`, `redacted_payload.schema.json`, `vision_context.schema.json`, `action.schema.json`, `vault_manifest.schema.json`, and `agent_message.schema.ts`.
 2. **Privacy Engine Core (`extension/workers/`):**
-   - `regex.js`: 11 PII categories with false-positive suppression (Order IDs, SKUs, hex colors, prices). Input `.value` scanning, delivery address heuristics, personal account greetings (`Hello, <Name>`).
+   - `regex.js`: 11 PII categories with false-positive suppression. Input `.value` scanning, delivery address heuristics, personal account greetings, user names.
    - `redaction.js`: Longest-match-first replacement, page-wide token deduplication, SPII/PII/Contextual severity tiers, incremental DOM scanning (`redactIncrementalDOM`).
    - `privacy-worker.js`: Web worker orchestrating DOM scanning, metadata generation, and DOM-to-visual bounding box extraction.
 3. **Automated Test Suite (109/109 Tests Passing — 100%):**
@@ -52,65 +62,20 @@ This running document records architectural decisions, completed work, active de
    - `redaction.test.js`: 13/13 passing.
    - `adversarial.test.js`: 15/15 passing.
    - `dom_redaction_server.test.js`: 45/45 passing.
-4. **Real Screenshot Fixtures & Pipeline:**
-   - Processed 5 real screenshots from user + 2 synthetic benchmarks:
-     - `Screenshot 2026-09-12 175109.png` (Eduplus jobs login)
-     - `Screenshot 2026-09-12 175018.png` (Google account switcher)
-     - `Screenshot 2026-09-12 175123.png` (Gmail OTP verification)
-     - `Screenshot 2026-09-12 175513.png` (Amazon India home)
-     - `Screenshot 2026-09-12 175632.png` (Amazon checkout modal)
-     - `checkout_payment.png` & `user_profile.png`
-   - Generated server payloads and client vaults in `fixtures/screenshots/redacted/`.
-5. **Interactive Test Harness:**
-   - `fixtures/screenshot_test_harness.html` with preset scenarios, before/after slider, DOM structural diff, and server payload inspector.
-
----
-
-## 4. Completed in Latest Iteration ✅
-
-- **Visual Blackout Pixel Alignment (100% Fixed):**
-  - Measured exact pixel coordinates across all 5 user screenshots using OpenCV edge/contour analysis.
-  - `Screenshot 2026-09-12 175109.png` (Eduplus jobs login): Username input at `[1056, 391, 769, 57]` and Password input at `[1056, 509, 769, 57]` are 100% cleanly blacked out. Shifted black strips eliminated.
-  - `Screenshot 2026-09-12 175632.png` (Amazon checkout modal): Card number input at `[621, 481, 244, 107]`, Nickname at `[621, 535, 244, 50]`, and full shipping address at `[36, 201, 764, 119]` (covering "Delivering to Adi Inamdar Flat no. 14... MAHARASHTRA, 411002") are 100% blacked out.
-  - `Screenshot 2026-09-12 175123.png` (Gmail OTP verification): OTP code box at `[1001, 586, 214, 64]` covering `214489` centered and blacked out.
-  - `Screenshot 2026-09-12 175513.png` (Amazon delivery): "Deliver to Adi Pune 411002" at `[176, 61, 164, 57]` and greeting at `[1516, 61, 174, 57]` blacked out.
-- **User Profile Image & Avatar Redaction Added:**
-  - Added profile avatar detection heuristic (`detect_user_avatars`) and `AVATAR` token classification (`[AVATAR_1]`) in both DOM scanner (`extension/workers/regex.js`, `extension/workers/redaction.js`) and visual helper (`scripts/redact_image_helper.py`).
-  - Successfully blacks out user profile icons in Google Account switcher (`[1850, 120, 55, 55]`), Gmail navbar photo (`[1848, 10, 58, 58]`), and browser profile toolbar badges (`[1750, 58, 42, 42]`).
-- **3 New Real Screenshots Tested & Redacted (10 Total Scenarios):**
-  - Added and processed:
-    1. `Screenshot 2026-09-12 184808.png` (Google Classroom):
-       - 15 DOM elements mapped.
-       - 7 tokens masked across 13 fields (`[AVATAR_1]`, `[NAME_1]` to `[NAME_6]`).
-       - Successfully blacked out all 8 class instructor names, 3 teacher face photos, top-right Google account avatar 'A', and browser profile badge. Zero spillover into class titles ("BoGD 26-27", "TY_A2_Batch_BG", etc.).
-    2. `Screenshot 2026-09-12 184852.png` (Amazon Deals):
-       - 6 DOM elements mapped.
-       - 3 tokens masked across 3 fields (`[AVATAR_1]`, `[ADDRESS_1]`, `[NAME_1]`).
-       - Successfully blacked out "Deliver to Adi Pune 411002" at `[180, 126, 150, 45]` (covering pin icon, name, and 6-digit postal pincode), "Hello, Adi Account & Lists" greeting at `[1350, 126, 160, 42]`, and browser profile avatar.
-       - Non-PII deal items (Tecno POP X 5G ₹17,999, ASUS Vivobook 15 ₹68,990) and search box remain completely untouched.
-    3. `Screenshot 2026-09-12 185303.png` (AWS Skill Builder Profile):
-       - 6 DOM elements mapped.
-       - 4 tokens masked across 4 fields (`[AVATAR_1]`, `[NAME_1]`, `[NAME_2]`, `[EMAIL_1]`).
-       - First name "Adi", Last name "Inamdar", and institutional email "adi.inamdar24@vit.edu" are cleanly blacked out. Email type ("Personal") and organization name ("Vishwakarma Institute of Technology") remain intact.
-- **CodeRabbit / Linter Issues Resolved:**
-  - `fixtures/screenshot_test_harness.html`:
-    - Added standard `background-clip: text;` property on line 95 to accompany `-webkit-background-clip: text;` (clearing IDE/CodeRabbit compatibility warning).
-    - Fixed duplicated identifier syntax error `let currentScenariolet currentScenario` -> `let currentScenario`.
-    - Integrated all 10 scenarios into `SCENARIOS` catalog in `fixtures/screenshot_test_harness.html`.
-- **Automated Tests:**
-  - 109/109 tests passing (100% pass rate).
-- **Git Policy Maintained:**
-  - All fixtures, scripts, and redacted outputs kept strictly local. Zero remote pushes performed.
+4. **Visual Blackout & Avatar Detection (`scripts/`):**
+   - `redact_image_helper.py`: OpenCV Haar cascade face detection with padding, Hough circle avatar analysis for top-right profile icons, solid black bounding boxes.
+   - `vision_processor.py`: On-device screen classification and layout feature detection.
+5. **Extension Shell & UI (Dev 1 Integration):**
+   - `manifest.json`, `popup/`, `sidepanel/`, `service-worker.js`.
+   - Pecific Light theme with Dark theme toggle and clean minimalist layout.
 
 ---
 
 ## 5. Next Steps & Pending Roadmap 📋
 
-1. **Phase 2 WebSocket Client Protocol:**
-   - Integrate WebSocket connection in extension background script to stream sanitized DOM payloads to FastAPI backend (`/ws/browser-agent`).
-2. **Phase 3 Local Action Rehydration:**
-   - Handle server action execution messages (e.g. `{"action": "type", "selector": "input#username", "value": "[EMAIL_1]"}`) and resolve tokens locally from client vault before executing native events.
-3. **Branch & Git Strategy:**
-   - Keep all screenshot fixtures and test outputs local. Await user instruction before staging and committing specific files to git.
-
-
+1. **Phase 3 Client-Side Module Wiring:**
+   - Wire `service-worker.js` to coordinate query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
+2. **Phase 4 WebSocket Client Integration:**
+   - Stream sanitized payload over WebSocket to FastAPI server (`/ws/browser-agent`).
+3. **Phase 5 Action Rehydration & Execution:**
+   - Resolve tokens locally from client vault before typing into fields, and trigger approval dialogs for high-risk actions.

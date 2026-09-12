@@ -1,7 +1,31 @@
 /**
  * iSIH / PrivacyLens — Agent Message Contract (WebSocket Protocol)
- * Shared between Extension Client (R1) and Server (R5).
+ * Shared between Extension Client (Dev 1 / Dev 3) and Server (Dev 5).
  */
+
+// ─── Enums (Dev 1 Compatible) ──────────────────────────────────────────────────
+
+export enum ExtensionToServerMessageType {
+  USER_QUERY = 'USER_QUERY',
+  STEP_RESULT = 'STEP_RESULT',
+  APPROVAL_RESPONSE = 'APPROVAL_RESPONSE',
+  SESSION_RESTORE = 'SESSION_RESTORE',
+  PAUSE_AGENT = 'PAUSE_AGENT',
+  RESUME_AGENT = 'RESUME_AGENT',
+  STOP_AGENT = 'STOP_AGENT'
+}
+
+export enum ServerToExtensionMessageType {
+  PLAN = 'PLAN',
+  NEXT_STEP = 'NEXT_STEP',
+  APPROVAL_REQUIRED = 'APPROVAL_REQUIRED',
+  DYNAMIC_OBSTACLE = 'DYNAMIC_OBSTACLE',
+  SESSION_RESTORED = 'SESSION_RESTORED',
+  TASK_COMPLETE = 'TASK_COMPLETE',
+  ERROR = 'ERROR'
+}
+
+// ─── String Union Types ────────────────────────────────────────────────────────
 
 export type MessageType =
   | 'USER_QUERY'
@@ -32,6 +56,8 @@ export type ScreenType =
   | 'error_page'
   | 'unknown';
 
+// ─── Bounding Box & Vision ──────────────────────────────────────────────────────
+
 export interface BoundingBox {
   bbox: [number, number, number, number]; // [x, y, width, height]
   confidence?: number;
@@ -58,6 +84,8 @@ export interface VisionContext {
     bbox: [number, number, number, number];
   }>;
 }
+
+// ─── Sanitized DOM ─────────────────────────────────────────────────────────────
 
 export interface SanitizedElement {
   id: string;
@@ -93,128 +121,97 @@ export interface SanitizedDOM {
   };
 }
 
+// ─── Vault Manifest ────────────────────────────────────────────────────────────
+
 export interface VaultManifest {
   has_email?: boolean;
   has_password?: boolean;
   has_phone?: boolean;
-  has_address?: boolean;
-  has_pan?: boolean;
-  has_aadhaar?: boolean;
   has_card?: boolean;
-}
-
-export interface PrivacyStats {
-  faces_redacted: number;
-  pii_tokens_masked: number;
-  dom_masked_fields: number;
-}
-
-export interface TokenManifest {
-  tokens_used: string[];
-  total_tokens: number;
+  has_aadhaar?: boolean;
+  has_pan?: boolean;
+  tokens_available?: string[];
+  tokens_count?: number;
   token_types?: Record<string, string>;
   redacted_elements?: Array<{
     element_id: string;
-    tag?: string;
+    tag: string;
     selector?: string;
     types: string[];
     tokens: string[];
   }>;
 }
 
-export interface UserQueryPayload {
-  query: string;
-  current_url: string;
-  page_title?: string;
-  viewport?: { width: number; height: number; scroll_x: number; scroll_y: number };
-  sanitized_dom: SanitizedDOM;
-  vision_context: VisionContext;
-  vault_manifest: VaultManifest;
-  redacted_screenshot?: string; // base64 data URL
-  privacy_stats?: PrivacyStats;
-  token_manifest?: TokenManifest;
-}
-
-export interface StepResultPayload {
-  step_id: number;
-  action: string;
-  status: 'success' | 'error' | 'skipped';
-  current_url: string;
-  vision_context?: VisionContext;
-  result?: Record<string, any>;
-  redacted_screenshot?: string;
-  extracted_data?: any;
-}
+// ─── Action & Execution ────────────────────────────────────────────────────────
 
 export interface ActionStep {
-  id: number;
-  action:
-    | 'NAVIGATE'
-    | 'CLICK'
-    | 'TYPE'
-    | 'TYPE_FROM_VAULT'
-    | 'PRESS_KEY'
-    | 'HOVER'
-    | 'SCROLL'
-    | 'SELECT'
-    | 'WAIT'
-    | 'SCREENSHOT'
-    | 'EXTRACT'
-    | 'NEW_TAB'
-    | 'SWITCH_TAB'
-    | 'CLOSE_TAB'
-    | 'DISMISS_POPUP'
-    | 'CAPTCHA_HANDOFF'
-    | 'REPORT_RESULT';
-  target?: {
-    selector?: string;
-    url?: string;
-    coordinates?: [number, number];
-    text?: string;
-    tab_id?: number;
-    tab_purpose?: string;
-  };
+  step_id?: number;
+  action_id?: string;
+  action: string;
+  selector?: string;
   value?: string;
-  key?: string;
-  vault_key?: string;
-  execution_mode?: 'DOM' | 'VISION' | 'HYBRID';
-  protocol_level?: 'SAFE' | 'CAUTION' | 'CRITICAL' | 'FORBIDDEN';
   description?: string;
-  verify?: {
-    method: 'DOM_CHECK' | 'URL_CHECK' | 'SCREENSHOT';
-    condition: string;
-  };
-  fallback?: {
-    action: string;
-    reason: string;
-  };
-  timeout_ms?: number;
+  risk_level?: 'SAFE' | 'CAUTION' | 'CRITICAL';
+  riskLevel?: 'SAFE' | 'CAUTION' | 'CRITICAL';
+  use_vault?: boolean;
+  useVault?: boolean;
+  vault_key?: string;
+  coordinates?: [number, number];
 }
 
 export interface ExecutionPlan {
   goal: string;
-  chain_of_thought?: string;
-  total_steps: number;
-  steps: ActionStep[];
+  total_steps?: number;
+  steps: Array<ActionStep | string>;
+}
+
+// ─── Payloads ──────────────────────────────────────────────────────────────────
+
+export interface UserQueryPayload {
+  query: string;
+  url?: string;
+  viewport?: { width: number; height: number };
+}
+
+export interface StepResultPayload {
+  success: boolean;
+  step_id?: number;
+  actionId?: string;
+  action?: string;
+  sanitized_dom?: SanitizedDOM;
+  domSnapshot?: any;
+  vision_context?: VisionContext;
+  visionContext?: any;
+  redacted_screenshot?: string;
+  vault_manifest?: VaultManifest;
+  error?: string;
 }
 
 export interface PlanPayload {
-  plan: ExecutionPlan;
+  goal?: string;
+  plan?: ExecutionPlan;
+  steps?: string[];
 }
 
 export interface NextStepPayload {
-  step: ActionStep;
+  step?: ActionStep;
+  actionId?: string;
+  action?: any;
 }
 
 export interface ApprovalRequiredPayload {
-  step: ActionStep;
-  reason: string;
+  step?: ActionStep;
+  actionId?: string;
+  description?: string;
+  reason?: string;
+  riskLevel?: 'SAFE' | 'CAUTION' | 'CRITICAL';
   vault_key?: string;
 }
 
 export interface ApprovalResponsePayload {
-  step_id: number;
-  action: string;
+  step_id?: number;
+  actionId?: string;
+  action?: string;
   approved: boolean;
   useVault?: boolean;
   client_timestamp?: number;
@@ -227,9 +224,17 @@ export interface TaskCompletePayload {
   extracted_data?: any[];
 }
 
+export interface ErrorPayload {
+  code: string;
+  message: string;
+}
+
+// ─── Base Envelope ─────────────────────────────────────────────────────────────
+
 export interface AgentMessage<T = any> {
-  type: MessageType;
-  session_id: string;
+  type: MessageType | ExtensionToServerMessageType | ServerToExtensionMessageType;
+  session_id?: string;
+  timestamp?: string; // ISO string
   client_timestamp?: number;
   payload: T;
 }
