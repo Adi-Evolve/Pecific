@@ -1,0 +1,37 @@
+{
+  "$id": "vision_context.schema.json",
+  "type": "object",
+  "required": ["screen_type", "confidence", "faces_detected", "pii_regions", "backend", "processing_ms"],
+  "properties": {
+    "screen_type": {
+      "type": "string",
+      "enum": ["search_results", "product_page", "checkout", "login_page", "cart", "form", "unknown"]
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "faces_detected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bbox", "confidence"],
+        "properties": {
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "confidence": { "type": "number" }
+        }
+      }
+    },
+    "pii_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "bbox"],
+        "properties": {
+          "type": { "type": "string", "enum": ["face", "text_pii"] },
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "backend": { "type": "string", "enum": ["webgpu", "wasm"] },
+    "processing_ms": { "type": "number" }
+  }
+}

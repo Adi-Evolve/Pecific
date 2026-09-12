@@ -1,0 +1,10 @@
+{
+  "screen_type": "login_page",
+  "confidence": 0.81,
+  "faces_detected": [],
+  "pii_regions": [
+    { "type": "text_pii", "bbox": [220, 340, 420, 362], "label": "email" }
+  ],
+  "backend": "wasm",
+  "processing_ms": 187
+}

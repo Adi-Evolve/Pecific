@@ -1,0 +1,23 @@
+{
+  "$id": "vault_manifest.schema.json",
+  "type": "object",
+  "required": ["fields"],
+  "properties": {
+    "fields": {
+      "type": "object",
+      "description": "Boolean presence flags only. Server sees availability, never values.",
+      "properties": {
+        "email": { "type": "boolean" },
+        "password": { "type": "boolean" },
+        "phone": { "type": "boolean" },
+        "name": { "type": "boolean" },
+        "address": { "type": "boolean" }
+      },
+      "additionalProperties": { "type": "boolean" }
+    },
+    "locked": {
+      "type": "boolean",
+      "description": "True if vault is passphrase-locked and unavailable this session."
+    }
+  }
+}
