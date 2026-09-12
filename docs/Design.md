@@ -1,91 +1,106 @@
-# Design System
+# PrivacyLens (Pecific) — Design System & UI Specifications
 
-## Design Direction
+This document defines the visual standards, color tokens, typography, and component patterns for the Pecific Browser Extension UI, interactive sidepanels, and developer verification tools.
 
-The interface should feel like a calm control surface for a powerful but supervised agent: high information density, strong status hierarchy, and visible privacy boundaries. It should feel technical and trustworthy without looking like a generic dark dashboard.
+---
 
-## Color Palette
+## 1. Visual Philosophy & Overview
+The design evokes a feeling of simple, premium, and unobtrusive utility. We use a clean, modern aesthetic with a **Light Theme base** to reduce visual clutter (drawing inspiration from minimalist interfaces like Claude and ChatGPT), alongside a **Dark Theme** for privacy-first developer inspection and high-contrast environments.
 
-Use CSS variables so the extension has one visual vocabulary.
+- **Styling:** Vanilla CSS. Modular, scoped, zero external CSS framework overhead.
+- **Icons:** Lightweight SVG line icons (minimal footprint, high-contrast lines).
 
+---
+
+## 2. Color Palette & Design Tokens
+
+### 2.1 Light Theme (Default Extension UI)
+- **Background Main:** `#FFFFFF` (Pure white for main interactive surface)
+- **Background Surface:** `#F9FAFB` (Subtle off-white for cards, headers, borders)
+- **Primary Accent:** `#000000` (Pitch black for primary CTA to ensure highest contrast)
+- **Secondary Accent:** `#374151` (Dark gray for hover states)
+- **Success / Privacy Guard:** `#10B981` (Green for active task dots & sanitized tokens)
+- **Text Primary:** `#111827` (Near black for high readability)
+- **Text Secondary / Muted:** `#6B7280` (Medium gray for secondary info)
+- **Borders:** `#E5E7EB` (Subtle light gray to delineate sections without heavy boxing)
+
+### 2.2 Dark Theme (Developer Harness & Dark Mode Toggle)
 ```css
-:root {
-  --ink: #17212b;
-  --ink-muted: #5f6b76;
-  --paper: #f6f8f5;
-  --surface: #ffffff;
-  --line: #d8dfda;
-  --teal: #087f8c;
-  --teal-soft: #d9f0ef;
-  --amber: #b86b00;
-  --amber-soft: #fff0d2;
-  --red: #b23a48;
-  --red-soft: #f9dfe2;
-  --blue: #285da8;
-  --focus: #1c8d8a;
+:root[data-theme="dark"] {
+  --bg-primary: #0a0e17;       /* Deepest obsidian background */
+  --bg-secondary: #111827;     /* Elevated container & panel background */
+  --bg-card: #1a2234;          /* Interactive card & input background */
+  --bg-card-hover: #222d42;    /* Card hover state */
+  --border-color: rgba(255, 255, 255, 0.08); /* Subtle glass border */
+  --border-focus: rgba(99, 102, 241, 0.5);   /* Active element glow border */
+
+  /* Functional Accents */
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --accent: #06b6d4;
+  --success: #10b981;
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-border: rgba(16, 185, 129, 0.35);
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* Typography */
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
 }
 ```
 
-- Use `--ink` for primary text and `--paper` for the page background.
-- Use teal for active progress and trusted local processing.
-- Use amber for caution and approval-required states.
-- Use red only for blocked, failed, or dangerous actions.
-- Use blue for links and secondary information.
-- Maintain WCAG AA contrast for text and controls.
+---
 
-## Theme
+## 3. Typography & Sizing Scale
 
-The default is a light, high-contrast theme. A dark theme may be added only after the light theme is complete and must preserve the same semantic colors and contrast ratios. Avoid purple-dominant gradients and decorative visual noise.
+- **Font Family (Body & UI):** Modern system font stack (`ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`).
+- **Font Family (Code & Tokens):** JetBrains Mono, Fira Code, monospace.
+- **Headings:** Bold (600/700), clean hierarchy.
+- **Body Text:** `13px` - `14px` base size for comfortable readability in small extension windows.
+- **Micro Labels & Chips:** `11px` - `12px`, semi-bold, uppercase tracking.
 
-## Typography
+---
 
-- Primary UI font: `Atkinson Hyperlegible`, with a system sans fallback.
-- Monospace/status font: `IBM Plex Mono`, with a monospace fallback.
-- Body size: 14px with 1.45 line height.
-- Small metadata: 12px with clear contrast.
-- Section headings: 16px, semibold.
-- Task title: 20px maximum in compact extension surfaces.
-- Do not use oversized marketing typography in popup or side-panel surfaces.
+## 4. UI Components & Patterns
 
-## Components
+### 4.1 Buttons & Inputs
+- **Primary Button:** Rounded corners (`8px`), solid dark color, no heavy gradients.
+- **Secondary Button:** Hollow, subtle border (`#E5E7EB`), hover elevation.
+- **Inputs:** Clean borders, subtle focus rings (box-shadows instead of bright harsh outlines).
 
-- **Task composer:** one clear multiline input, compact submit icon button, and recent task affordance.
-- **Status strip:** current phase, agent tab, connection state, and elapsed time.
-- **Step row:** numbered step, action description, state icon, and optional verification detail.
-- **Approval panel:** high-contrast amber treatment, exact action summary, target, data category, and explicit approve/cancel buttons.
-- **Privacy badge:** shows local scan status and whether the outgoing payload is sanitized; never displays raw detected values.
-- **Error state:** concise explanation, recovery action, and safe diagnostic code.
-- **Timeline:** compact chronological events with expandable sanitized details.
-- **Buttons:** use familiar icons for compact actions and icon-plus-text for consequential commands. Tooltips must explain unfamiliar icons.
-- **Cards:** use only for repeated steps, approval surfaces, and genuinely framed tools; do not nest cards.
+### 4.2 Redacted Token Tag
+Used in DOM inspectors and chat feeds to highlight sanitized sensitive values:
+```css
+.token-tag {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+```
 
-## Spacing And Shape
+### 4.3 Visual Blackout Rectangle Specification
+Used on canvas and image processing outputs:
+- **Color:** `#000000` (Solid black, 100% opacity, zero alpha channel bleed).
+- **Text Padding:** `+4px` on all 4 borders (`top`, `bottom`, `left`, `right`) to guarantee full coverage of ascenders/descenders.
+- **Faces & Avatars:** `+12%` radial/box padding to encompass profile borders and hairlines.
 
-- Base spacing unit: 4px.
-- Common spacing: 8px, 12px, 16px, 24px.
-- Control height: 36px minimum; icon-only controls: 32px square minimum.
-- Border radius: 6px for controls and 8px maximum for panels.
-- Borders should separate content without making every section look like a floating card.
-- Keep stable dimensions for status rows, buttons, and step indicators so state changes do not shift the layout.
+### 4.4 Execution Plan & Timeline
+- Vertical timeline with simple connector lines and status dots.
+- Active step indicated by a pulsing green status dot (`#10B981`).
 
-## Responsive Breakpoints
+---
 
-- Compact popup: up to 399px wide; single-column layout and abbreviated metadata.
-- Standard side panel: 400px to 719px; two-region status and task layout where useful.
-- Wide side panel: 720px and above; allow timeline details beside the active task.
-- At every width, critical approval controls remain visible without horizontal scrolling.
-
-## Motion And Feedback
-
-- Use a short page-load reveal for the active task.
-- Use a restrained progress transition when a step changes state.
-- Use a clear, non-animated blocked state for safety failures.
-- Respect `prefers-reduced-motion`.
-- Never use motion to disguise a delayed or uncertain model response.
-
-## Content Rules
-
-- Prefer concrete labels: `Sanitized`, `Waiting for approval`, `Executing`, `Verified`, `Blocked`.
-- State what the agent will do before asking for approval.
-- Do not expose raw PII in status text, logs, screenshots, or error messages.
-- Keep the privacy state visible throughout a task, not only on a settings screen.
+## 5. Dimensions & Spacing
+- **Extension Popup:** Max `400px` width, `480px` height.
+- **Extension Sidepanel:** Standard browser sidepanel width (`320px` to `420px`).
+- **Padding / Margins:** Generous whitespace (`16px` to `24px`) to ensure clean scannability.

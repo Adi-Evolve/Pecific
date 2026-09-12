@@ -1,141 +1,128 @@
-# System Architecture
+# PrivacyLens (Pecific) — System Architecture
 
-## Overview
-
-The system has two trust zones:
-
-1. **Client trust zone:** a Chrome Manifest V3 extension that reads pages, detects PII, owns credentials, executes actions, and decides what may leave the device.
-2. **Server reasoning zone:** a Python service that receives only sanitized context, plans actions, performs visual reasoning on redacted images, and manages non-sensitive task state.
-
-The server must never be treated as a credential store or as the source of truth for raw page data.
-
-## App Flow
+## 1. High-Level System Overview
 
 ```mermaid
-sequenceDiagram
-    participant U as User
-    participant UI as Popup/Side Panel
-    participant SW as Service Worker
-    participant CS as Content Script
-    participant PW as Privacy Worker
-    participant API as FastAPI Server
-    participant LLM as Planner
-    participant EX as Action Executor
+graph TD
+    subgraph Client ["Browser Client Extension (Chromium MV3)"]
+        UI["Extension Popup & Sidepanel (Dev 1)<br/>Pecific Minimal UI"]
+        CS["Content Script DOM Extractor (Dev 2)<br/>DOM Traversal & Event Execution"]
+        BG["Background Service Worker (Dev 1)<br/>Session & Message Router"]
+        PW["Privacy Worker (Dev 3)<br/>Regex + Redaction + Vault"]
+        VW["Vision Worker (Dev 4)<br/>TinyViT + BlazeFace WebGPU"]
+        CV["Client Vault<br/>(In-Memory Local Storage)"]
+    end
 
-    U->>UI: Enter task
-    UI->>SW: Start task
-    SW->>CS: Request DOM snapshot
-    SW->>PW: Analyze DOM and screenshot
-    PW-->>SW: Redacted payload and local privacy metadata
-    SW->>API: Sanitized message
-    API->>LLM: Build plan
-    LLM-->>API: Structured action
-    API-->>SW: Action or approval request
-    SW->>UI: Show status/approval
-    UI-->>SW: Approval decision
-    SW->>EX: Execute approved action
-    EX-->>SW: Step result
-    SW->>CS: Request updated state
+    subgraph Server ["Reasoning Server (FastAPI / Ollama)"]
+        WS["WebSocket Server (Dev 5)"]
+        PL["LLM Planner (Dev 5)<br/>Qwen3-14B / Llama 3"]
+        VL["Cloud VLM (Dev 6)<br/>Qwen2.5-VL-7B (Fallback Grounding)"]
+    end
+
+    CS -->|DOM Snapshot| BG
+    BG -->|Raw DOM| PW
+    BG -->|Raw Screenshot| VW
+    PW -->|Store Secret| CV
+    PW -->|Sanitized DOM + Manifest| BG
+    VW -->|Vision Context + Blackout| BG
+    BG -->|USER_QUERY / STEP_RESULT| WS
+    WS --> PL
+    PL -->|CoT Reasoning| WS
+    WS -->|AGENT_ACTION| BG
+    BG -->|Resolve Tokens| CV
+    BG -->|Execute Action| CS
 ```
 
-## Folder And File Structure
+---
 
-```text
-extension/
-  manifest.json                 MV3 permissions and entry points
-  service-worker.js             Orchestration and client/server messaging
-  popup/                        Short-lived task UI
-  sidepanel/                    Persistent task UI
-  content/
-    content-script.js           Page bridge and task-tab interaction
-    content-script-stub.js      Development content-script entry point
-    dom-extractor.js            Semantic DOM extraction
-    action-executor.js          Structured action execution
-  workers/
-    privacy-worker.js           Local PII pipeline coordinator
-    regex.js                    Deterministic PII detection
-    ner.js                      Local NER integration
-    ocr.js                      Local OCR integration
-    redaction.js                Redaction and map generation
-    vision-worker.js            Local visual analysis
-  vault/vault-manager.js        Encrypted local credential handling
-  tab/tab-manager.js            Agent-tab registration and isolation
-  lib/ort/                      ONNX Runtime Web assets
-  fixtures/                     Client-side contract and model fixtures
-server/
-  main.py                       FastAPI application entry point
-  config.py                     Runtime and model configuration
-  api/                          HTTP and WebSocket handlers
-  core/                         Planning, protocol, and correction logic
-  models/                       LLM and VLM loaders
-  schemas/                      Server-side message and action models
-  state/                        Session, memory, and task state
-  vision/                       Visual grounding and verification
-schemas/                         Shared client/server contracts
-ort-fetch/                       ONNX Runtime asset preparation utility
-docs/                            Product and engineering documentation
+## 2. Technology Stack
+
+| Tier | Component | Technology | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Extension Client** | Architecture | Chrome Manifest V3 (MV3) | Modern, secure Chromium extension framework |
+| | Frontend UI | Vanilla JS, Modern CSS (Pecific Design) | Zero-dependency, lightweight, high performance |
+| | DOM Extractor | Vanilla JS (`content.js`) | Traverses DOM, computes viewport bounding boxes |
+| | Privacy Engine | Pure JavaScript Web Worker | Multi-tier PII regex, redaction maps, audit log |
+| | Vision Worker | ONNX Runtime Web / WebGPU, OpenCV | TinyViT screen classification, BlazeFace |
+| **Backend Server** | API / Transport | Python 3.11+, FastAPI, WebSockets | Async real-time bidirectional agent action loop |
+| | LLM Planner | Qwen3-14B / Llama-3-8B-Instruct | Chain-of-Thought planning over sanitized DOM |
+| | Vision Grounding | Qwen2.5-VL-7B (Ollama / HuggingFace) | Secondary coordinate grounding on redacted images |
+| | Schema Contracts | JSON Schema draft-07, TypeScript types | Strict validation of inter-component payloads |
+
+---
+
+## 3. Directory & File Structure
+
+The project is structured as a modular repository with clear ownership per role:
+
+```
+Pecific/
+├── docs/                                  # Project Documentation
+│   ├── PRD.md                             # Requirements & user stories
+│   ├── Architecture.md                    # Technical architecture & data flow
+│   ├── Rules.md                           # AI & engineering guardrails
+│   ├── Phases.md                          # Ordered development phases
+│   ├── Design.md                          # Design system & tokens (Pecific Light & Dark)
+│   ├── Memory.md                          # Running project memory log
+│   ├── COMMUNICATION_SPEC.md              # WebSocket message contracts
+│   └── iSIH_Build_Plan_6Person.md         # 6-person role assignment plan
+├── extension/                             # Browser Extension (Client)
+│   ├── manifest.json                      # MV3 Manifest (Dev 1)
+│   ├── popup/                             # Extension Action Popup (Dev 1)
+│   │   ├── index.html                     # Popup layout
+│   │   └── popup.js                       # Popup controller & state sync
+│   ├── sidepanel/                         # Main Agent Interaction Sidepanel (Dev 1)
+│   │   └── index.html                     # Chat feed, approval dialog, plan timeline
+│   ├── service-worker.js                  # Background Service Worker & Router (Dev 1)
+│   ├── content/                           # Content Scripts (Dev 2)
+│   │   └── content.js                     # DOM snapshot extraction & action executor
+│   └── workers/                           # Isolated Client Web Workers (Dev 3 & Dev 4)
+│       ├── privacy-worker.js              # Privacy orchestrator worker (Dev 3)
+│       ├── regex.js                       # Multi-stage PII detection (Dev 3)
+│       ├── redaction.js                   # Token substitution & vault isolation (Dev 3)
+│       ├── ner.js                         # Contextual PII classifier (Dev 3)
+│       ├── ocr.js                         # Client OCR fallback (Dev 3)
+│       ├── vision-worker.js               # Vision perception worker (Dev 4)
+│       └── __tests__/                     # Privacy engine test suites (Dev 3)
+│           ├── regex.test.js              # 36 tests: PII regex verification
+│           ├── redaction.test.js          # 13 tests: Tokenization & deduplication
+│           ├── adversarial.test.js        # 15 tests: Injection & boundary tests
+│           └── dom_redaction_server.test.js # 45 tests: DOM server contracts
+├── schemas/                               # Shared Frozen Protocol Contracts
+│   ├── dom_snapshot.schema.json           # Dev 2 (Content script) → Dev 3 (Privacy worker)
+│   ├── redacted_payload.schema.json       # Dev 3 (Privacy worker) → Dev 5 (Server)
+│   ├── vision_context.schema.json         # Dev 4 (Vision worker) → Dev 5 (Server)
+│   ├── action.schema.json                 # Dev 5 (Server planner) → Dev 2 (Executor)
+│   ├── vault_manifest.schema.json         # Dev 3 (Client vault) presence
+│   └── agent_message.schema.ts            # Shared WebSocket protocol catalog
+├── server/                                # Backend Reasoning Server (Dev 5 & Dev 6)
+│   ├── app.py / main.py                   # FastAPI & WebSocket entrypoint
+│   ├── planner.py                         # LLM agent CoT prompt & planner (Dev 5)
+│   ├── vision/ / vlm.py                   # Secondary VLM coordinate grounding (Dev 6)
+│   └── requirements.txt                   # Server dependencies
+├── fixtures/                              # Test Benchmarks & Schemas
+│   ├── dom_clean.json                     # Clean e-commerce DOM fixture
+│   ├── dom_with_pii.json                  # PII-rich DOM fixture
+│   ├── pii_test_strings.json              # Adversarial test strings
+│   └── redacted_payload_sample.json       # Sample egress payload
+├── scripts/                               # Developer Tooling & Verification
+│   ├── redact_image_helper.py             # OpenCV image blackout helper
+│   └── vision_processor.py                # On-device screen classifier simulation
+└── package.json                           # Node.js project definition & test runners
 ```
 
-## Technology Stack
+---
 
-- Browser: Chrome Manifest V3 JavaScript, Web Workers, Web Crypto API, and WebGPU where available.
-- Client ML: ONNX Runtime Web, Transformers.js-compatible local models, Tesseract.js-compatible OCR, and a local face detector.
-- Server: Python 3.11+, FastAPI, WebSocket, and Pydantic-style schemas.
-- Planning model: Qwen3-14B, quantized for the target development GPU where available.
-- Visual model: Qwen2.5-VL-7B-Instruct, quantized for the target development GPU where available.
-- Development deployment: local server or Colab plus ngrok during the demo stage.
-- State: local browser storage/vault on the client; SQLite or JSON-backed session state on the server during development.
+## 4. End-to-End Execution Loop (Pipeline)
 
-## Data Flow
-
-1. The content script extracts only the semantic and interactive page context needed for planning.
-2. The vision worker captures and analyzes a page image locally.
-3. The privacy worker applies regex, NER, OCR, face detection, and redaction.
-4. The service worker validates a `redacted_payload` and sends it over the API/WebSocket.
-5. The server validates the envelope, updates the session, and asks the planner for a structured action.
-6. Visual verification is requested only with sanitized visual context.
-7. The extension validates the action, asks for approval when required, executes it, and reports a `STEP_RESULT`.
-8. The loop repeats until completion, cancellation, or an unrecoverable error.
-
-## Shared Contracts
-
-The contracts in `schemas/` are the integration boundary:
-
-- `dom_snapshot.schema.json`: sanitized semantic page representation.
-- `vision_context.schema.json`: screen state, confidence, and detected regions.
-- `redacted_payload.schema.json`: sanitized DOM, image metadata, and client-only redaction references.
-- `agent_message.schema.ts`: WebSocket message envelope and event types.
-- `action.schema.json`: allowed structured actions and safety metadata.
-- `vault_manifest.schema.json`: key presence and field capability without secret values.
-
-Contract changes require review from both extension and server owners.
-
-## APIs
-
-### HTTP
-
-- `GET /health`: service liveness and model readiness summary.
-- `POST /sessions`: create a non-sensitive task session.
-- `GET /sessions/{session_id}`: retrieve sanitized task status.
-- `POST /sessions/{session_id}/cancel`: request cancellation.
-
-### WebSocket
-
-- `WS /ws/{session_id}`: bidirectional task protocol.
-- Client events include task start, sanitized context, approval decision, and step result.
-- Server events include plan/action, approval required, progress, completion, and error.
-- Exact fields belong in the shared message schema; handlers must reject unknown or invalid action types.
-
-## Key Dependencies
-
-- Browser-side ONNX Runtime Web assets are checked in under `extension/lib/ort/`.
-- Client model and OCR dependencies must run locally and off the main UI thread where practical.
-- Server dependencies belong in `server/requirements.txt` and must be pinned or version-reviewed before reproducible installation is claimed.
-- Model loading must be isolated behind `server/models/llm_loader.py` and `server/models/vlm_loader.py` so tests can use deterministic fakes.
-
-## Reliability Boundaries
-
-- If local sanitization fails, fail closed and do not send the payload.
-- If the server is unavailable, preserve local task state and show a recoverable error.
-- If an action cannot be verified, stop or request a new plan instead of blindly repeating it.
-- If a model is unavailable, use the documented fallback or report that capability as unavailable.
+The system executes a repeating step-by-step pipeline for autonomous action:
+1. **Trigger:** User sends a query (e.g. *"Buy headphones under ₹1000 on Flipkart"*).
+2. **Capture DOM & Screenshot:** `content.js` captures current interactive DOM tree; `chrome.tabs.captureVisibleTab` takes a raw viewport screenshot.
+3. **On-Device Vision:** `vision-worker.js` classifies the screen (`search_results`, `checkout_cart`, `login_auth`) and detects faces/avatars.
+4. **On-Device Privacy Engine:** `privacy-worker.js` runs Regex + DOM heuristics + NER/OCR fallback on DOM nodes. Sensitive fields are substituted with tokens (`[EMAIL_1]`, `[PASSWORD_FIELD]`, `[CARD_1]`). Raw secrets are saved in the client-only in-memory vault.
+5. **Visual Blackout:** Black rectangles (`#000000`) are drawn over faces, avatars, and DOM coordinate boxes on the screenshot.
+6. **Send to Server (WebSocket):** Extension dispatches `USER_QUERY` or `STEP_RESULT` with `sanitized_dom`, `redacted_screenshot`, `token_manifest`, and `vision_context`. Zero plain PII exits the browser.
+7. **LLM Planning & VLM Verification:** Server LLM generates the next action step. If confidence is borderline, VLM verifies the coordinate target against the redacted screenshot.
+8. **Action Response:** Server responds with `NEXT_STEP` or `APPROVAL_REQUIRED` (for checkout/login).
+9. **Execution & Vault Resolution:** Extension receives the action. If it contains a token (e.g. `[EMAIL_1]`), the extension resolves it locally from the client vault before typing.
+10. **Repeat:** The loop advances until `TASK_COMPLETE`.

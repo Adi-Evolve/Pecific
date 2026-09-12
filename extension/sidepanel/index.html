@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pecific Agent Sidepanel</title>
+  <style>
+    body {
+      width: 100%;
+      height: 100vh;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #111827;
+      color: #F9FAFB;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    /* Privacy Guard Widget */
+    .privacy-guard-card {
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .guard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .guard-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #10B981;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .guard-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      text-align: center;
+    }
+    .guard-stat-item {
+      background: #111827;
+      border-radius: 6px;
+      padding: 6px 4px;
+    }
+    .guard-stat-val {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #F9FAFB;
+    }
+    .guard-stat-lbl {
+      font-size: 0.65rem;
+      color: #9CA3AF;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .panel-content {
+      padding: 12px;
+      background: #1F2937;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #374151;
+    }
+    .timeline-item {
+      padding: 8px;
+      background: #111827;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid #10B981;
+    }
+    .timeline-title {
+      font-weight: 600;
+      font-size: 0.8rem;
+      margin-bottom: 2px;
+    }
+    .timeline-detail {
+      font-size: 0.75rem;
+      color: #9CA3AF;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel-header">
+    <h1>Agent Timeline</h1>
+    <span style="font-size: 0.75rem; color: #10B981;">● Online</span>
+  </div>
+
+  <!-- Real-time Privacy Guard Status Card -->
+  <div class="privacy-guard-card">
+    <div class="guard-header">
+      <div class="guard-title">
+        <span>🛡️</span> Zero-Egress Privacy Guard
+      </div>
+      <span style="font-size: 0.7rem; color: #10B981; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;">ACTIVE</span>
+    </div>
+    <div class="guard-stats-row">
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-spii-count">0</div>
+        <div class="guard-stat-lbl">SPII Masked</div>
+      </div>
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-pii-count">0</div>
+        <div class="guard-stat-lbl">PII Masked</div>
+      </div>
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-leak-count" style="color: #10B981;">0</div>
+        <div class="guard-stat-lbl">Egress Leaks</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-content" id="timeline">
+    <div class="timeline-item">
+      <div class="timeline-title">Privacy Engine Initialized</div>
+      <div class="timeline-detail">On-device vault active. Indian SPII (Aadhaar, PAN, DL, Voter ID, UAN) protected.</div>
+    </div>
+    <p style="color: #9CA3AF; font-size: 0.8rem; text-align: center; margin-top: 16px;">Waiting for user tasks...</p>
+  </div>
+
+  <script>
+    function updateSidepanelTelemetry(telemetry) {
+      if (!telemetry) return;
+      const elSpii = document.getElementById('side-spii-count');
+      const elPii = document.getElementById('side-pii-count');
+      const elLeak = document.getElementById('side-leak-count');
+      if (elSpii) elSpii.textContent = telemetry.spii_count || 0;
+      if (elPii) elPii.textContent = telemetry.pii_count || 0;
+      if (elLeak) {
+        const leaks = telemetry.leaked_count !== undefined ? telemetry.leaked_count : 0;
+        elLeak.textContent = leaks;
+        elLeak.style.color = (leaks > 0 || telemetry.zero_egress_verified === false) ? '#EF4444' : '#10B981';
+      }
+    }
+
+    // Fetch initial telemetry
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_PRIVACY_TELEMETRY' }, (res) => {
+        if (res && res.telemetry) updateSidepanelTelemetry(res.telemetry);
+      });
+    } catch (e) {}
+
+    // Listen for live updates
+    if (chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg?.type === 'PRIVACY_TELEMETRY_UPDATED' && msg.payload) {
+          updateSidepanelTelemetry(msg.payload);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

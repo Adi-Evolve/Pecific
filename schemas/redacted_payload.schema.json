@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RedactedPayload",
+  "description": "Sanitized DOM + redacted screenshot + privacy stats. Output of the Privacy Engine (R3). Consumed by server planner (R5). The redaction map is NOT included — it stays on the client.",
+  "type": "object",
+  "required": ["sanitized_dom", "privacy_stats"],
+  "properties": {
+    "sanitized_dom": {
+      "type": "object",
+      "description": "DOM snapshot with all PII replaced by indexed tokens like [EMAIL_1], [NAME_1], [AADHAAR_1]",
+      "required": ["elements_count", "elements"],
+      "properties": {
+        "elements_count": {
+          "type": "integer",
+          "description": "Number of interactive elements in the snapshot"
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "tag"],
+            "properties": {
+              "id": { "type": "string", "description": "Unique element identifier (e.g., 'e_1')" },
+              "tag": { "type": "string", "description": "HTML tag name (e.g., 'INPUT', 'BUTTON', 'A')" },
+              "selector": { "type": "string", "description": "CSS selector for this element" },
+              "text": { "type": "string", "description": "Text content with PII replaced by tokens: [EMAIL_1], [NAME_1], etc." },
+              "placeholder": { "type": "string" },
+              "href": { "type": "string" },
+              "type": { "type": "string", "description": "Input type attribute (text, password, email, etc.)" },
+              "interactive": { "type": "boolean" },
+              "role": { "type": "string", "description": "ARIA role" },
+              "value": { "type": "string", "description": "Input value (redacted if sensitive)" },
+              "is_redacted": {
+                "type": "boolean",
+                "description": "True if this element contained sensitive data that was redacted"
+              },
+              "redacted_types": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Categories of PII redacted from this element (e.g. ['EMAIL'], ['PASSWORD_FIELD'])"
+              },
+              "redacted_tokens": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Redaction token identifiers present in this element (e.g. ['[EMAIL_1]'])"
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "Bounding box [x, y, width, height] in viewport pixels",
+                "items": { "type": "number" },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        },
+        "forms": {
+          "type": "array",
+          "description": "Forms detected on the page with field structure (values redacted)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "action": { "type": "string" },
+              "method": { "type": "string" },
+              "inputs": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "List of input field names/types in the form"
+              },
+              "vault_available": {
+                "type": "object",
+                "description": "Which form fields can be filled from the vault",
+                "additionalProperties": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "scroll_x": { "type": "number" },
+            "scroll_y": { "type": "number" }
+          }
+        }
+      }
+    },
+    "redacted_screenshot": {
+      "type": ["string", "null"],
+      "description": "Base64-encoded JPEG with faces blacked out and PII text regions blacked out. Null if no screenshot was provided."
+    },
+    "privacy_stats": {
+      "type": "object",
+      "required": ["faces_redacted", "pii_tokens_masked", "dom_masked_fields"],
+      "properties": {
+        "faces_redacted": {
+          "type": "integer",
+          "description": "Number of face regions blacked out in the screenshot"
+        },
+        "pii_tokens_masked": {
+          "type": "integer",
+          "description": "Total PII tokens created across all types (e.g., 5 means [EMAIL_1]..[EMAIL_2], [NAME_1]..[NAME_3])"
+        },
+        "dom_masked_fields": {
+          "type": "integer",
+          "description": "Number of DOM elements that had their text content modified by redaction"
+        },
+        "ocr_regions_redacted": {
+          "type": "integer",
+          "description": "Number of text regions blacked out in the screenshot based on OCR PII detection"
+        },
+        "pii_breakdown": {
+          "type": "object",
+          "description": "Count of PII items detected per type",
+          "properties": {
+            "emails": { "type": "integer" },
+            "phones": { "type": "integer" },
+            "names": { "type": "integer" },
+            "addresses": { "type": "integer" },
+            "aadhaar": { "type": "integer" },
+            "pan": { "type": "integer" },
+            "cards": { "type": "integer" },
+            "dob": { "type": "integer" },
+            "upi": { "type": "integer" },
+            "other": { "type": "integer" }
+          }
+        },
+        "detection_methods": {
+          "type": "object",
+          "description": "How many PII items were caught by each detection method",
+          "properties": {
+            "regex": { "type": "integer", "description": "Deterministic regex pattern matches" },
+            "ner": { "type": "integer", "description": "BERT-NER contextual entity detection" },
+            "ocr_regex": { "type": "integer", "description": "Regex on OCR-extracted text" },
+            "ocr_ner": { "type": "integer", "description": "NER on OCR-extracted text" },
+            "dom_attribute": { "type": "integer", "description": "DOM attribute-based (e.g., type=password)" }
+          }
+        }
+      }
+    },
+    "token_manifest": {
+      "type": "object",
+      "description": "Tells the server which redaction tokens exist in this payload (but NOT their real values). The server uses this to understand what data was redacted.",
+      "properties": {
+        "tokens_used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of all tokens used, e.g., ['[EMAIL_1]', '[NAME_1]', '[PAN_1]']"
+        },
+        "total_tokens": {
+          "type": "integer",
+          "description": "Total count of unique tokens"
+        },
+        "token_types": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map of token identifier to PII category, e.g., {'[EMAIL_1]': 'EMAIL', '[PASSWORD_FIELD]': 'PASSWORD_FIELD'}"
+        },
+        "redacted_elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["element_id", "types", "tokens"],
+            "properties": {
+              "element_id": { "type": "string" },
+              "tag": { "type": "string" },
+              "selector": { "type": "string" },
+              "types": { "type": "array", "items": { "type": "string" } },
+              "tokens": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "description": "DOM element level breakdown of redacted sensitive fields"
+        }
+      }
+    }
+  }
+}

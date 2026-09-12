@@ -1,73 +1,48 @@
-# AI Guardrails
+# PrivacyLens (Pecific) — AI Guardrails & Engineering Rules
 
-These rules apply to AI-generated code and changes in this repository.
+## 1. Collaboration & Module Ownership
+To avoid merge conflicts and cross-person blocking across the 6-person team:
+- **Dev 1 (Extension Shell & Orchestrator):** Owns `extension/manifest.json`, `extension/popup/*`, `extension/sidepanel/*`, and `extension/service-worker.js`.
+- **Dev 2 (DOM & Execution):** Owns `extension/content/*`.
+- **Dev 3 (Privacy Engine):** Owns `extension/workers/privacy-worker.js`, `regex.js`, `ner.js`, `ocr.js`, `redaction.js`, and `extension/workers/__tests__/*`.
+- **Dev 4 (Vision & Vault Client):** Owns `extension/workers/vision-worker.js` and client vault storage.
+- **Dev 5 (Server & LLM Planner):** Owns `server/app.py`, `server/planner.py`, and core backend orchestration.
+- **Dev 6 (Server VLM & Grounding):** Owns `server/vision/*` and VLM grounding.
+- **Strict Boundary Rule:** Do NOT modify files owned by other team members without adhering to the interface contracts in `COMMUNICATION_SPEC.md`.
+- **Contracts First:** Never assume the shape of data between client and server. Always adhere to the JSON schemas defined in the `schemas/` directory. Never edit frozen schemas without cross-role alignment.
 
-## Libraries And Stack
+---
 
-- Use the existing JavaScript browser-extension architecture and Python FastAPI backend.
-- Prefer Web Workers for CPU/GPU-heavy client inference.
-- Use ONNX Runtime Web and the checked-in `extension/lib/ort/` assets for browser inference.
-- Use Web Crypto API primitives for local vault encryption; do not invent cryptography.
-- Use JSON Schema and the existing shared schemas for cross-boundary validation.
-- Use FastAPI and the existing server modules for API work.
-- Avoid adding Redux, a new frontend framework, a second server framework, or a second message protocol.
-- Do not replace working local model integrations with remote PII APIs.
-- Add a dependency only when the existing platform or repository code cannot reasonably provide the behavior.
+## 2. Privacy & Security Rules (Zero-Tolerance)
+1. **Absolute Privacy First:** Under NO circumstances may raw credentials, personal passwords, unmasked credit cards, or biometric/facial imagery leave the client browser.
+2. **Structural Invariance:** DOM sanitation must NEVER break or alter DOM structure, hierarchy, tag names, unique IDs, CSS selectors, or bounding box coordinates.
+3. **No Unapproved Git Pushes:** NEVER run `git push` or publish testing results/raw fixtures to remote repositories unless the user explicitly commands it.
+4. **Token Convention:** All redacted values must follow the standardized token convention: `[TYPE_INDEX]` (e.g., `[EMAIL_1]`, `[CARD_1]`, `[OTP_1]`, `[PASSWORD_FIELD]`).
+5. **Luhn Validation:** Every detected 16-digit sequence claiming to be a credit card MUST pass the Luhn algorithm before tokenization to avoid corrupting arbitrary product numbers.
+6. **Input Value Masking:** Always sanitize both element visible text AND input `.value` attributes (`input.value = "[EMAIL_1]"`).
+7. **Password Masking:** Any `<input type="password">` must have its value and text masked as `[PASSWORD_FIELD]`.
+8. **No Remote Code Execution:** Adhere strictly to Chrome MV3 security constraints (no `eval()`, no external script injection).
 
-## Privacy Rules
+---
 
-- Treat the browser extension as the privacy enforcement boundary.
-- Never send raw names, emails, phone numbers, addresses, government IDs, payment data, passwords, credential values, or unredacted faces to the server.
-- Never log raw page content, screenshots, credentials, tokens, or redaction targets.
-- Keep raw values and redaction maps client-side unless a future privacy review explicitly changes this rule.
-- Fail closed when sanitization, schema validation, or action validation fails.
-- The vault exposes capability and field presence, not secret values.
+## 3. Technology & Library Guidelines
+- **Client Frontend:** Vanilla JavaScript (ES2022+), Modern Vanilla CSS (Pecific Design System), Web Workers API.
+- **Client Vision/Inference:** ONNX Runtime Web (`ort.js`), WebGPU, Canvas 2D / OffscreenCanvas API.
+- **Python Tooling:** Python 3.10+, OpenCV (`cv2`), NumPy, FastAPI, WebSockets.
+- **Schemas:** JSON Schema Draft-07, TypeScript type definitions.
 
-## Safety Rules
+### Anti-Patterns to AVOID:
+- ❌ **Do NOT use React, Vue, or Angular for the extension UI:** Keep the extension bundle ultra-lightweight and fast without virtual DOM overhead.
+- ❌ **Do NOT use heavy Redux or MobX state managers:** Use simple reactive state stores or pub-sub within the extension service worker.
+- ❌ **Do NOT use Tailwind CSS unless explicitly requested:** Use Vanilla CSS with design tokens defined in `Design.md`.
+- ❌ **Do NOT introduce external tracking, telemetry, or analytics SDKs:** All audit logs remain strictly local to user storage.
+- ❌ **Do NOT perform full-page OCR on every frame:** OCR is strictly a secondary fallback for canvas elements or non-DOM imagery.
 
-- Every server action must match `action.schema.json`.
-- Critical actions require a distinct user approval event immediately before execution.
-- Do not bypass authentication, CAPTCHA, paywalls, rate limits, or security controls.
-- Do not execute arbitrary JavaScript supplied by the server.
-- Restrict actions to the registered agent tab and reject stale or mismatched tab IDs.
-- Use idempotency keys or step IDs where the existing protocol supports them.
-- Stop after repeated verification failures and surface a useful error.
+---
 
-## Coding Style
-
-- Preserve the repository's existing module boundaries and public message shapes.
-- Use descriptive names; avoid one-letter variables and unexplained abbreviations.
-- Keep functions small enough to test in isolation.
-- Prefer explicit data transformations over hidden mutation.
-- Validate inputs at boundaries and return structured errors.
-- Keep comments rare and reserved for non-obvious reasoning.
-- Use ASCII by default in source and documentation.
-- Avoid unrelated refactors, formatting churn, and speculative abstractions.
-
-## Error Handling
-
-- Use typed or structured error categories such as validation, privacy, transport, model, execution, approval, and verification errors.
-- Include a stable error code and safe user-facing message.
-- Do not expose stack traces, prompts, raw model output, or sensitive payloads to the user or logs.
-- Preserve enough sanitized context to reproduce failures with fixtures.
-- Retry only transient transport/model failures, with bounded backoff.
-- Do not retry irreversible actions automatically.
-
-## Testing Requirements
-
-- Add fixture-based tests for every shared schema change.
-- Test positive and negative PII cases, overlapping regions, malformed inputs, and already-redacted values.
-- Test that critical actions are blocked without approval.
-- Test action execution and post-action verification independently from model calls.
-- Keep model-dependent tests optional and provide deterministic fakes for normal CI.
-- Run the narrowest relevant test or validation command after each change.
-
-## What AI Must Not Do
-
-- Do not invent files, endpoints, permissions, schemas, or model capabilities without documenting the decision.
-- Do not silently change a shared contract.
-- Do not commit secrets, model weights, credentials, or user fixtures containing real PII.
-- Do not make server-side access to raw browser data a fallback for missing client logic.
-- Do not disable redaction, approval gates, schema validation, or tab isolation to make a demo pass.
-- Do not claim a feature is complete without a test or verified manual path.
-- Do not modify unrelated user changes in a dirty worktree.
+## 4. Coding Style & Guidelines
+- **Naming Conventions:** Use camelCase for variables/functions, PascalCase for classes/interfaces, and UPPER_SNAKE_CASE for constants.
+- **Async Safety:** Ensure asynchronous operations (like Chrome API calls) are handled correctly with async/await. All worker message dispatches must be wrapped in `try-catch` blocks and return structured error objects `{ success: false, error: message }`.
+- **Fail-Safe Privacy:** If an element match is ambiguous or classification fails, default to redacting/masking rather than leaking.
+- **Graceful Fallbacks:** If WebGPU is unavailable on a client machine, the vision worker must fall back to CPU WASM without throwing fatal runtime errors.
+- **Testing & Fixtures:** Keep test runs, generated screenshots, and payload logs local. Do not commit heavy screenshots or fixture dumps to the remote repository.

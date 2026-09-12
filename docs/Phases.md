@@ -1,104 +1,81 @@
-# Development Phases
+# PrivacyLens (Pecific) — Development Phases & Milestone Deliverables
 
-The project uses contract-first, fixture-driven phases. A phase is complete only when its deliverables and exit check are satisfied.
+This document tracks the phased implementation across the project lifecycle, unifying the overarching architecture with Dev 1 (Extension Shell) and Dev 3 (Privacy Engine) deliverables.
 
-## Phase 0: Contracts And Setup
+---
 
-**Deliverables**
+## Phase 0: Kickoff, Contract Schemas & Interface Standardization (Complete ✅)
+- **Objective:** Agree on schemas, message protocols, and folder ownership so client and server develop in parallel without blocking.
+- **Deliverables:**
+  - `schemas/dom_snapshot.schema.json` (Dev 2 → Dev 3)
+  - `schemas/redacted_payload.schema.json` (Dev 3 → Dev 5)
+  - `schemas/vision_context.schema.json` (Dev 4 → Dev 5)
+  - `schemas/action.schema.json` (Dev 5 → Dev 2)
+  - `schemas/vault_manifest.schema.json` (Dev 3/4 Client Vault presence)
+  - `schemas/agent_message.schema.ts` (WebSocket Protocol Catalog)
 
-- Freeze the six shared schemas in `schemas/`.
-- Add representative fixtures for DOM, vision, redaction, actions, messages, and vault manifests.
-- Confirm repository ownership and integration points.
-- Decide the demo task, browser targets, and single versus dual model deployment.
+---
 
-**Exit check:** every team member can build against the schemas without waiting for another module.
+## Phase 1: Foundation & Core Privacy Engine (Complete ✅)
+- **Dev 1 (Shell):**
+  - MV3 `manifest.json` with permissions (`activeTab`, `scripting`, `sidePanel`, etc.).
+  - `popup/` and `sidepanel/` HTML shells.
+  - `service-worker.js` message router skeleton.
+- **Dev 3 (Privacy):**
+  - `extension/workers/regex.js`: 11-category PII scanner (Email, Phone, Aadhaar, PAN, Luhn Credit Cards, UPI, DOB, IP, IFSC, Passwords).
+  - `extension/workers/redaction.js`: Longest-match-first replacement, page-wide token deduplication, severity categorization.
+  - 36 regex tests (`regex.test.js`) + 13 redaction tests (`redaction.test.js`).
 
-## Phase 1: Foundation
+---
 
-**Deliverables**
+## Phase 2: Core Engine Build & DOM Structural Invariance (Complete ✅)
+- **Dev 1 (Shell):**
+  - Wire popup to service worker message passing.
+  - Create Approval Dialog UI component (visual only).
+  - Notification permissions setup.
+  - **Pecific UI Redesign:** Clean minimalist light theme base with dark mode toggle.
+- **Dev 3 (Privacy):**
+  - Input value masking (`<input value="...">`) and text node sanitization.
+  - Server-facing `token_manifest` (`tokens_used`, `token_types`, `redacted_elements`).
+  - Isolated client-only in-memory vault.
+  - 45 server contract tests (`dom_redaction_server.test.js`) + 15 adversarial tests (`adversarial.test.js`) — 109/109 tests passing.
 
-- MV3 manifest, popup/side-panel shells, and service-worker router.
-- Content-script injection and semantic DOM extraction skeleton.
-- Pure regex PII detector with tests.
-- Vision worker and face-detection proof of life.
-- FastAPI health route and WebSocket envelope echo.
-- VLM loading proof of life in the target GPU environment.
+---
 
-**Exit check:** each module runs independently against fixtures or a local smoke test.
+## Phase 3: Client-Side Integration & Visual Redaction (Completed ✅)
+- **Objective:** Wire service worker to coordinate modules: query $\to$ DOM snapshot (Dev 2) $\to$ vision analysis (Dev 4) $\to$ privacy worker (Dev 3) $\to$ sanitized payload.
+- **Dev 3 / Privacy Deliverables:**
+  - Integrated Dev 1 extension shell with Dev 3 privacy engine via `extension/workers/privacy-client.js`.
+  - Exposed 3-line asynchronous helper module (`sanitizeDOMSnapshot`) for Dev 1.
+  - Live zero-egress verification engine proving 0 raw secrets leave the user's browser.
+  - Indian SPII expansion for SIH PS26171: Voter ID (EPIC), Indian Driving License (Parivahan DL), EPFO UAN, Vehicle Registration (RC), and Indian Bank Account Numbers.
+  - Real screenshot testing across complex websites (Google Classroom, Eduplus Login, Gmail OTP, Amazon Deals, AWS Profile).
+  - Pixel-perfect visual blackout of sensitive text, account greetings, and PIN codes.
+  - 149/149 test suites passing (Unit, Server contract, Adversarial, and Privacy client integration).
 
-## Phase 2: Core Engines
+---
 
-**Deliverables**
+## Phase 4: Client $\leftrightarrow$ Server Integration
+- **Objective:** Full round-trip integration over WebSocket.
+- **Deliverables:** Connect extension background script to FastAPI WebSocket server, stream sanitized DOM payload, and receive structured plan responses.
 
-- Popup-to-service-worker messaging and approval UI.
-- DOM action executor and post-action verification.
-- NER, OCR, combined privacy pipeline, and redaction engine.
-- Screen classification, vision context, and encrypted vault foundation.
-- LLM planning and protocol safety classification.
-- VLM visual grounding endpoint.
+---
 
-**Exit check:** module-level tests pass and outputs validate against shared schemas.
+## Phase 5: Full Agentic Loop & Approval Dialog
+- **Objective:** End-to-end autonomous action with human-in-the-loop controls.
+- **Deliverables:** Wire the interactive approval dialog to real checkout/login events; execute native DOM actions (click, fill) resolving vault tokens locally.
 
-## Phase 3: Side-Level Integration
+---
 
-**Client deliverable:** service worker requests DOM and vision context, runs sanitization, and produces a valid redacted payload.
+## Phase 6: Advanced Features & UX Polish (In Progress 🔄)
+- **Deliverables:**
+  - Redaction Telemetry Hook & Privacy Vault Modal in extension popup and sidepanel (Completed ✅).
+  - Screenshot timeline UI, undo/rollback controls, progress bar + ETA, keyboard shortcuts.
 
-**Server deliverable:** gateway accepts a fixture payload, produces a valid plan, and invokes visual grounding when required.
+---
 
-**Exit check:** client and server each complete a full local loop without depending on the other side.
-
-## Phase 4: Client-Server Integration
-
-**Deliverables**
-
-- Establish the WebSocket connection.
-- Send a live sanitized payload.
-- Receive a valid plan/action envelope.
-- Confirm session IDs, step IDs, schema validation, and disconnect recovery.
-
-**Exit check:** one real request completes the sanitized payload -> plan round trip.
-
-## Phase 5: Full Agent Loop
-
-**Deliverables**
-
-- Execute server actions and report step results.
-- Enforce approval for critical actions.
-- Fill approved fields from the local vault.
-- Re-sanitize every new page state.
-- Handle obstacles, waits, retries, and verification failures.
-- Complete one simple search-and-click task autonomously.
-
-**Exit check:** the representative task completes with no raw PII leaving the client.
-
-## Phase 6: Advanced Features
-
-**Deliverables**
-
-- Agent-tab registry and user-tab protection.
-- Progress, timeline, cancellation, and recovery UI.
-- Session memory and context carry-forward.
-- Improved obstacle detection and self-correction.
-- Smart waits and bounded retry with backoff.
-- Privacy confidence indicators and reusable task templates.
-
-**Exit check:** each feature works independently against the Phase 5 loop.
-
-## Phase 7: Hardening And Demo
-
-**Deliverables**
-
-- Repeated end-to-end demo runs.
-- Adversarial PII and redaction tests, including overlapping regions.
-- Model fallback and server outage behavior.
-- Performance pass for DOM extraction, local scanning, payload size, and action latency.
-- Documentation and runbook updates.
-
-**Exit check:** the chosen demo completes twice consecutively in the target environment, and known limitations are documented.
-
-## Delivery Discipline
-
-- Merge small, focused changes.
-- Treat schemas as reviewed interfaces.
-- Keep model-dependent work behind deterministic fakes where possible.
-- Do not begin a later phase by bypassing an earlier phase's safety or validation exit check.
+## Phase 7: Hardening & Demo Evaluation Benchmarks
+- **Objective:** Demonstrate end-to-end autonomous execution on the 3 SIH evaluation benchmarks.
+- **Benchmark 1 (Recruitment Application):** Navigate Eduplus/Job portal, auto-fill profile using tokens, protect student email & password.
+- **Benchmark 2 (E-Commerce Purchase):** Navigate Amazon/Flipkart, add item to cart, proceed to checkout, blackout shipping address & card number.
+- **Benchmark 3 (OTP & Verification):** Detect verification code in Gmail/SMS screen, tokenize as `[OTP_1]`, resolve locally in browser to complete login.
