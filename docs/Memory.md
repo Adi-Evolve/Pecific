@@ -1,15 +1,15 @@
 # Project Memory Log
 
 ## Current Status
-- **Phase:** Phase 2 (Core Engine Build) completed. Ready for Phase 3.
-- **Active Task:** Fixed bugs and overhauled UI to match BVAgent premium design.
+- **Phase:** Phase 2 (Core Engine Build) completed. UI redesigned. Ready for Phase 3.
+- **Active Task:** Redesigned UI to Pecific Light theme.
 
 ## Completed Work
 - Initial project documentation created (`PRD.md`, `Architecture.md`, `Rules.md`, `Phases.md`, `Design.md`, `Memory.md`).
 - `schemas/agent_message.schema.ts` drafted.
 - `extension/manifest.json`, `popup`, `sidepanel`, and `service-worker.js` created.
 - Phase 2 complete: popup-to-service-worker messaging, Approval Dialog UI, Notification permission setup.
-- **UI Redesign & Bug Fixes:** Added `sidePanel` permission to fix missing context menu, resolved notification icon error, and completely overhauled popup to match the BVAgent premium design (Idle/Running states).
+- **UI Redesign (Pecific):** Replaced the dark neon theme with a clean, Claude-like minimalist light theme. Renamed to Pecific, removed tabs, simplified timeline logic.
 
 ## In Progress
 - Waiting to begin Phase 3 (wiring service worker to coordinate Dev 2/Dev 3/Dev 4 modules).

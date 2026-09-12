@@ -9,8 +9,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRun = document.getElementById('btn-run');
   const btnStop = document.getElementById('btn-stop');
   const btnSettings = document.getElementById('btn-settings');
+  const btnLock = document.getElementById('btn-lock');
+  const btnTheme = document.getElementById('btn-theme');
+  const iconSun = document.getElementById('icon-sun');
+  const iconMoon = document.getElementById('icon-moon');
   const promptInput = document.getElementById('prompt-input');
   const displayQuery = document.getElementById('display-query');
+
+  // Load saved theme
+  chrome.storage.local.get(['theme'], (result) => {
+    if (result.theme === 'dark') {
+      document.body.classList.add('dark-mode');
+      iconMoon.style.display = 'none';
+      iconSun.style.display = 'block';
+    }
+  });
+
+  // Toggle Theme
+  btnTheme.addEventListener('click', () => {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    
+    iconMoon.style.display = isDark ? 'none' : 'block';
+    iconSun.style.display = isDark ? 'block' : 'none';
+    
+    chrome.storage.local.set({ theme: isDark ? 'dark' : 'light' });
+  });
 
   // Transition to Running State
   btnRun.addEventListener('click', () => {
@@ -18,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!query) return;
 
     // Update UI
-    displayQuery.textContent = query;
+    displayQuery.textContent = `"${query}"`;
     viewIdle.style.display = 'none';
     viewRunning.style.display = 'block';
 
@@ -44,31 +68,19 @@ document.addEventListener('DOMContentLoaded', () => {
     viewIdle.style.display = 'block';
   });
 
-  // Trigger Mock Notification (Testing purpose mapped to Settings gear for now)
+  // Trigger Mock Notification
   btnSettings.addEventListener('click', () => {
     chrome.notifications.create({
       type: 'basic',
-      title: 'BVAgent Status',
-      message: 'Extension settings loaded correctly.',
-      iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' // 1x1 transparent pixel fallback
+      title: 'Pecific Settings',
+      message: 'Settings opened (Mock).',
+      iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
     });
   });
 
-  // Make tabs clickable (Visual toggle only)
-  const tabs = document.querySelectorAll('.tab');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      // Remove active class from all
-      tabs.forEach(t => t.classList.remove('active'));
-      // Add active to clicked
-      e.currentTarget.classList.add('active');
-    });
-  });
-
-  // Make lock icon clickable
-  const lockIcon = document.querySelectorAll('.icon-btn')[1]; // 2nd icon btn
-  if (lockIcon) {
-    lockIcon.addEventListener('click', () => {
+  // Lock Icon Interaction
+  if (btnLock) {
+    btnLock.addEventListener('click', () => {
       alert("Privacy Vault is locked. Credentials are safe on-device.");
     });
   }
