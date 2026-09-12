@@ -45,9 +45,9 @@ const PATTERNS = {
   // Aadhaar: 12 digits, first digit 2-9, grouped as XXXX XXXX XXXX or continuous
   AADHAAR: /\b[2-9]\d{3}[\s\-]?\d{4}[\s\-]?\d{4}\b/g,
 
-  // PAN: 5 uppercase letters + 4 digits + 1 uppercase letter
+  // PAN: 5 letters + 4 digits + 1 letter (case-insensitive)
   // 4th character is category: P(Person), C(Company), H(HUF), F(Firm), A(AOP), T(Trust), B(BOI), L(Local Auth), J(AJP), G(Govt)
-  PAN: /\b[A-Z]{3}[PCGHFATBLJ][A-Z]\d{4}[A-Z]\b/g,
+  PAN: /\b[a-zA-Z]{3}[PCGHFATBLJpcghfatblj][a-zA-Z]\d{4}[a-zA-Z]\b/g,
 
   // Credit card: 13-19 digits with optional separators (Luhn-validated in post-processing)
   CREDIT_CARD: /\b(?:\d{4}[\s\-]?){2,3}\d{1,4}(?:[\s\-]?\d{1,4})?\b/g,
@@ -182,7 +182,15 @@ function luhnCheck(number) {
 function isPartOfLongerNumber(text, start, end) {
   const charBefore = start > 0 ? text[start - 1] : '';
   const charAfter = end < text.length ? text[end] : '';
-  return /\d/.test(charBefore) || /\d/.test(charAfter);
+  if (/\d/.test(charBefore) || /\d/.test(charAfter)) return true;
+
+  // Also check if preceded or followed by a segmented digit group (e.g. " 9012" or "1234 ")
+  const suffix = text.slice(end);
+  if (/^[\s-]\d/.test(suffix)) return true;
+  const prefix = text.slice(0, start);
+  if (/\d[\s-]$/.test(prefix)) return true;
+
+  return false;
 }
 
 /**
@@ -410,6 +418,13 @@ export function scanRegexPII(text, context = {}) {
 
       // Skip if already matched
       if (isOverlapping(start, end)) continue;
+
+      // Must not be part of a longer digit sequence (e.g. order ID, tracking number)
+      if (isPartOfLongerNumber(text, start, end)) continue;
+
+      // Must not be preceded directly by an alphanumeric char (e.g. OD123456789012)
+      const charBefore = start > 0 ? text[start - 1] : ' ';
+      if (/[A-Za-z0-9]/.test(charBefore)) continue;
 
       // Skip toll-free and emergency numbers
       const isSkipPattern = SKIP_PHONE_PATTERNS.some(p => p.test(digits));

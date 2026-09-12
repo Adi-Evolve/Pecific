@@ -28,7 +28,8 @@ import { scanRegexPII, scanDOMElements } from './regex.js';
 import { initNER, scanNER, scanDOMElementsNER, isNERReady } from './ner.js';
 import { initOCR, extractText, mapPIIToImageRegions, isOCRReady } from './ocr.js';
 import { 
-  redactDOM, redactImage, resetCounters, resolveToken, restoreTokens 
+  redactDOM, redactImage, resetCounters, resolveToken, restoreTokens,
+  redactIncrementalDOM, getPIICategory
 } from './redaction.js';
 
 // ─── Worker State ───────────────────────────────────────────────────────────────
@@ -40,6 +41,8 @@ const state = {
   currentSessionId: null,
   /** @type {import('./redaction.js').RedactionMap|null} */
   currentRedactionMap: null,
+  /** Full audit history for privacy dashboard */
+  currentAudit: [],
   /** Stats across all sanitization calls in this session */
   sessionStats: {
     totalCalls: 0,
@@ -247,8 +250,9 @@ async function sanitize(params) {
     state.sessionStats.totalCalls
   );
 
-  // Store the redaction map locally (NEVER sent to server)
+  // Store the redaction map & audit locally (NEVER sent to server)
   state.currentRedactionMap = domResult.redactionMap;
+  state.currentAudit = domResult.tokenAudit || [];
 
   // Merge privacy stats
   const finalStats = {
@@ -263,6 +267,7 @@ async function sanitize(params) {
     redactionMap: domResult.redactionMap, // Stays on client!
     privacyStats: finalStats,
     tokenManifest: domResult.tokenManifest,
+    tokenAudit: domResult.tokenAudit || [],
     processingTime: {
       total: totalTime,
       phaseA_domScan: phaseATime,
@@ -442,7 +447,44 @@ self.onmessage = async function(event) {
           redactionMap: result.redactionMap, // Client-only — SW must NOT forward to server
           privacyStats: result.privacyStats,
           tokenManifest: result.tokenManifest,
+          tokenAudit: result.tokenAudit,
           processingTime: result.processingTime,
+        });
+        break;
+      }
+
+      case 'SANITIZE_INCREMENTAL': {
+        const result = redactIncrementalDOM(
+          data.previousDOM,
+          data.newDOM,
+          scanDOMElements,
+          data.sessionId || state.currentSessionId || ''
+        );
+
+        state.currentRedactionMap = result.redactionMap;
+        state.currentAudit = result.tokenAudit || [];
+
+        self.postMessage({
+          type: 'SANITIZE_RESULT',
+          sanitizedDOM: result.sanitizedDOM,
+          redactedScreenshot: null, // Incremental scans prioritize DOM action speed
+          redactionMap: result.redactionMap,
+          privacyStats: result.privacyStats,
+          tokenManifest: result.tokenManifest,
+          tokenAudit: result.tokenAudit,
+          incrementalStats: result.incrementalStats,
+        });
+        break;
+      }
+
+      case 'GET_AUDIT': {
+        self.postMessage({
+          type: 'AUDIT_RESULT',
+          audit: state.currentAudit,
+          sessionStats: state.sessionStats,
+          tokensCount: state.currentRedactionMap 
+            ? Object.keys(state.currentRedactionMap.tokens).length 
+            : 0,
         });
         break;
       }

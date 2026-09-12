@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisionContext",
+  "description": "Output of on-device vision worker (TinyViT/MobileViT + BlazeFace) capturing visual page state and layout without raw personal data",
+  "type": "object",
+  "required": ["screen_type", "confidence"],
+  "properties": {
+    "screen_type": {
+      "type": "string",
+      "description": "Semantic screen classification determined by on-device ViT",
+      "enum": [
+        "search_results",
+        "product_detail",
+        "checkout_cart",
+        "login_auth",
+        "form_application",
+        "dashboard_home",
+        "canvas_workspace",
+        "captcha_challenge",
+        "modal_overlay",
+        "error_page",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Classification confidence score (0.0 - 1.0)",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "layout": {
+      "type": "object",
+      "description": "High-level spatial properties cross-referenced with DOM",
+      "properties": {
+        "visual_density": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "has_active_modal": {
+          "type": "boolean"
+        },
+        "has_sticky_footer": {
+          "type": "boolean"
+        },
+        "canvas_heavy": {
+          "type": "boolean",
+          "description": "True when page uses Canvas/WebGL (DOM-sparse, requires vision-based actions)"
+        }
+      }
+    },
+    "detected_regions": {
+      "type": "array",
+      "description": "Macro bounding boxes [x, y, width, height] for structural landmarks",
+      "items": {
+        "type": "object",
+        "required": ["type", "bbox"],
+        "properties": {
+          "type": { "type": "string" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "faces_detected": {
+      "type": "array",
+      "description": "Bounding boxes of faces detected and blurred locally on-device",
+      "items": {
+        "type": "object",
+        "required": ["bbox"],
+        "properties": {
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "confidence": { "type": "number" }
+        }
+      }
+    },
+    "visual_pii_regions": {
+      "type": "array",
+      "description": "Visual bounding boxes of masked sensitive fields (IDs, cards, addresses)",
+      "items": {
+        "type": "object",
+        "required": ["type", "bbox"],
+        "properties": {
+          "type": { "type": "string" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      }
+    }
+  }
+}

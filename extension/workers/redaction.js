@@ -122,17 +122,21 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
   // Deep clone the DOM snapshot so we don't modify the original
   const sanitizedDOM = JSON.parse(JSON.stringify(domSnapshot));
 
+  // Shared across all elements in this DOM snapshot to ensure consistent token reuse
+  const valueToToken = new Map();
+  const tokenAudit = [];
+
   // Process each element
   if (sanitizedDOM.elements && Array.isArray(sanitizedDOM.elements)) {
     for (const element of sanitizedDOM.elements) {
-      const matches = matchesByElement[element.id];
-      if (!matches || matches.length === 0) continue;
+      const matches = matchesByElement[element.id] || [];
+      if (matches.length === 0 && element.type !== 'password') continue;
 
       let elementModified = false;
 
       // Process text content
       if (element.text) {
-        const result = replaceTextWithTokens(element.text, matches, redactionMap);
+        const result = replaceTextWithTokens(element.text, matches, redactionMap, valueToToken, tokenAudit, element.id);
         if (result.modified) {
           element.text = result.text;
           elementModified = true;
@@ -144,7 +148,7 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
 
       // Process placeholder (less common, but can contain PII hints)
       if (element.placeholder) {
-        const result = replaceTextWithTokens(element.placeholder, matches, redactionMap);
+        const result = replaceTextWithTokens(element.placeholder, matches, redactionMap, valueToToken, tokenAudit, element.id);
         if (result.modified) {
           element.placeholder = result.text;
           elementModified = true;
@@ -153,7 +157,7 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
 
       // Process href (URLs can contain email/phone in query params)
       if (element.href) {
-        const result = replaceTextWithTokens(element.href, matches, redactionMap);
+        const result = replaceTextWithTokens(element.href, matches, redactionMap, valueToToken, tokenAudit, element.id);
         if (result.modified) {
           element.href = result.text;
           elementModified = true;
@@ -168,6 +172,15 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
         totalTokensMasked++;
         piiBreakdown.other++;
         detectionMethods.dom_attribute++;
+        tokenAudit.push({
+          token: '[PASSWORD_FIELD]',
+          type: 'PASSWORD_FIELD',
+          method: 'DOM_ATTRIBUTE',
+          confidence: 1.0,
+          category: 'SPII',
+          elementId: element.id,
+          timestamp: Date.now(),
+        });
       }
 
       if (elementModified) {
@@ -202,18 +215,48 @@ export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
       tokens_used: tokensUsed,
       total_tokens: tokensUsed.length,
     },
+    tokenAudit,
   };
+}
+
+/**
+ * Classify PII into severity tiers for the privacy dashboard UI:
+ * - SPII (Strict PII): Critical identifiers (Aadhaar, PAN, Card, Passwords)
+ * - PII: Standard personal identifiers (Email, Phone, Name, UPI)
+ * - CONTEXTUAL: Secondary personal info (DOB, Address, Passport, IFSC, IP)
+ * 
+ * @param {string} type - PII type string
+ * @returns {'SPII'|'PII'|'CONTEXTUAL'}
+ */
+export function getPIICategory(type) {
+  switch (type) {
+    case 'AADHAAR':
+    case 'PAN':
+    case 'CARD':
+    case 'PASSWORD_FIELD':
+      return 'SPII';
+    case 'EMAIL':
+    case 'PHONE':
+    case 'NAME':
+    case 'UPI':
+      return 'PII';
+    default:
+      return 'CONTEXTUAL';
+  }
 }
 
 /**
  * Replace PII values in text with tokens, using longest-match-first strategy.
  * 
  * @param {string} text - Original text
- * @param {Array<{type: string, value: string, start: number, end: number}>} matches - PII matches
+ * @param {Array<{type: string, value: string, start: number, end: number, confidence?: number, method?: string}>} matches - PII matches
  * @param {RedactionMap} redactionMap - Map to populate with token → value pairs
+ * @param {Map<string, string>} [valueToToken=new Map()] - Shared value → token map for deduplication
+ * @param {Array<object>} [tokenAudit=[]] - Audit trail for UI dashboard
+ * @param {string} [elementId=''] - Associated DOM element ID
  * @returns {{text: string, modified: boolean, tokensCreated: number}}
  */
-function replaceTextWithTokens(text, matches, redactionMap) {
+function replaceTextWithTokens(text, matches, redactionMap, valueToToken = new Map(), tokenAudit = [], elementId = '') {
   if (!text || !matches || matches.length === 0) {
     return { text, modified: false, tokensCreated: 0 };
   }
@@ -226,20 +269,29 @@ function replaceTextWithTokens(text, matches, redactionMap) {
 
   let resultText = text;
   let tokensCreated = 0;
-  const usedTokens = new Map(); // value → token (reuse same token for same value)
 
   for (const match of sortedMatches) {
     const value = match.value;
     
     // Check if we already have a token for this exact value (dedup)
     let token;
-    if (usedTokens.has(value)) {
-      token = usedTokens.get(value);
+    if (valueToToken.has(value)) {
+      token = valueToToken.get(value);
     } else {
       token = getNextToken(match.type);
-      usedTokens.set(value, token);
+      valueToToken.set(value, token);
       redactionMap.tokens[token] = value;
       tokensCreated++;
+
+      tokenAudit.push({
+        token,
+        type: match.type,
+        method: match.method || 'REGEX',
+        confidence: match.confidence !== undefined ? match.confidence : 1.0,
+        category: getPIICategory(match.type),
+        elementId,
+        timestamp: Date.now(),
+      });
     }
 
     // Replace all occurrences of this value in the text
@@ -461,6 +513,88 @@ export function restoreTokens(text, redactionMap) {
   }
 
   return restored;
+}
+
+// ─── Incremental Scanning (Agentic Loop Support) ──────────────────────────────
+
+/**
+ * Incrementally redact a DOM snapshot during the agentic action loop.
+ * Detects differences between previous DOM snapshot and current DOM snapshot,
+ * re-scanning only modified or newly added elements to achieve < 25ms sanitization latency.
+ * 
+ * @param {object} previousRawDOM - Previous raw DOM snapshot
+ * @param {object} newRawDOM - New raw DOM snapshot from page transition
+ * @param {function} scanFn - Function to scan elements for PII (e.g. scanDOMElements)
+ * @param {string} [sessionId=''] - Current session ID
+ * @returns {RedactedDOMResult & { incrementalStats: { total: number, unchanged: number, changed: number, timeMs: number } }}
+ */
+export function redactIncrementalDOM(previousRawDOM, newRawDOM, scanFn, sessionId = '') {
+  const startTime = performance.now();
+
+  // If no previous DOM, fall back to full scan
+  if (!previousRawDOM || !previousRawDOM.elements) {
+    const matches = scanFn(newRawDOM.elements);
+    const fullResult = redactDOM(newRawDOM, matches, sessionId);
+    return {
+      ...fullResult,
+      incrementalStats: {
+        total: newRawDOM.elements?.length || 0,
+        unchanged: 0,
+        changed: newRawDOM.elements?.length || 0,
+        timeMs: Math.round(performance.now() - startTime),
+      }
+    };
+  }
+
+  // Index previous elements by ID
+  const prevElementsById = new Map();
+  for (const el of previousRawDOM.elements) {
+    prevElementsById.set(el.id, el);
+  }
+
+  // Find changed or new elements
+  const changedElements = [];
+  const unchangedElementIds = new Set();
+
+  for (const el of (newRawDOM.elements || [])) {
+    const prev = prevElementsById.get(el.id);
+    if (!prev) {
+      // Brand new element
+      changedElements.push(el);
+    } else if (
+      prev.text !== el.text ||
+      prev.placeholder !== el.placeholder ||
+      prev.href !== el.href ||
+      prev.type !== el.type
+    ) {
+      // Modified element
+      changedElements.push(el);
+    } else {
+      // Unchanged element
+      unchangedElementIds.add(el.id);
+    }
+  }
+
+  // Scan only the changed elements
+  const changedMatches = changedElements.length > 0 ? scanFn(changedElements) : [];
+
+  // Also retain any existing matches from unchanged elements
+  const previousMatches = scanFn(
+    newRawDOM.elements.filter(el => unchangedElementIds.has(el.id))
+  );
+
+  const allMatches = [...previousMatches, ...changedMatches];
+  const result = redactDOM(newRawDOM, allMatches, sessionId);
+
+  return {
+    ...result,
+    incrementalStats: {
+      total: newRawDOM.elements?.length || 0,
+      unchanged: unchangedElementIds.size,
+      changed: changedElements.length,
+      timeMs: Math.round(performance.now() - startTime),
+    }
+  };
 }
 
 // ─── Exported Types ─────────────────────────────────────────────────────────────
