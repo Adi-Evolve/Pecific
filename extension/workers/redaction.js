@@ -1,0 +1,474 @@
+/**
+ * redaction.js — Token Replacement + Image Blackout Engine
+ * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * 
+ * Takes all PII detections from Regex + NER + OCR and performs:
+ * 1. DOM Text Redaction: Replace PII strings with numbered tokens ([EMAIL_1], [NAME_1])
+ * 2. Image Redaction: Draw black rectangles over face/PII regions via OffscreenCanvas
+ * 3. Redaction Map: Client-only lookup table (token → original value)
+ * 
+ * The Redaction Map NEVER leaves the client — it's used locally when the server
+ * sends TYPE_FROM_VAULT or similar actions that need the real values.
+ * 
+ * @module redaction
+ */
+
+// ─── Token Counters ─────────────────────────────────────────────────────────────
+
+/** Per-session token counters (reset when session changes) */
+let tokenCounters = {};
+let currentSessionId = null;
+
+/**
+ * Reset token counters (call when starting a new session or task)
+ */
+export function resetCounters(sessionId = null) {
+  tokenCounters = {};
+  currentSessionId = sessionId;
+}
+
+/**
+ * Get the next token for a given PII type.
+ * E.g., first email → [EMAIL_1], second → [EMAIL_2]
+ * 
+ * @param {string} type - PII type (EMAIL, PHONE, NAME, etc.)
+ * @returns {string} Token string like [EMAIL_1]
+ */
+function getNextToken(type) {
+  if (!tokenCounters[type]) {
+    tokenCounters[type] = 0;
+  }
+  tokenCounters[type]++;
+  return `[${type}_${tokenCounters[type]}]`;
+}
+
+// ─── Redaction Map ──────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} RedactionMap
+ * @property {Object.<string, string>} tokens - Maps token → original value (e.g., "[EMAIL_1]" → "user@gmail.com")
+ * @property {Object.<string, boolean>} vaultMapping - Which data types are available in the vault
+ * @property {string} sessionId - Session this map belongs to
+ */
+
+/**
+ * Create an empty redaction map
+ * @param {string} sessionId
+ * @returns {RedactionMap}
+ */
+function createRedactionMap(sessionId) {
+  return {
+    tokens: {},
+    vaultMapping: {},
+    sessionId,
+  };
+}
+
+// ─── DOM Text Redaction ─────────────────────────────────────────────────────────
+
+/**
+ * Redact PII from DOM text elements, producing sanitized DOM + redaction map.
+ * 
+ * Strategy:
+ * 1. Collect all PII matches across all elements
+ * 2. For each element, replace PII values with tokens (longest-match-first)
+ * 3. Build the redaction map (token → original value)
+ * 4. Compute privacy stats
+ * 
+ * @param {object} domSnapshot - Raw DOM snapshot from content script (matches dom_snapshot.schema.json)
+ * @param {Array<{elementId: string, matches: Array<{type: string, value: string, start: number, end: number, confidence: number, method: string}>}>} elementMatches - PII matches grouped by element
+ * @param {string} [sessionId=''] - Current session ID
+ * @returns {RedactedDOMResult}
+ */
+export function redactDOM(domSnapshot, elementMatches, sessionId = '') {
+  if (currentSessionId !== sessionId) {
+    resetCounters(sessionId);
+  }
+
+  const redactionMap = createRedactionMap(sessionId);
+
+  /** @type {Object.<string, number>} PII type → count breakdown */
+  const piiBreakdown = {
+    emails: 0,
+    phones: 0,
+    names: 0,
+    addresses: 0,
+    aadhaar: 0,
+    pan: 0,
+    cards: 0,
+    dob: 0,
+    upi: 0,
+    other: 0,
+  };
+
+  /** @type {Object.<string, number>} Detection method → count */
+  const detectionMethods = {
+    regex: 0,
+    ner: 0,
+    ocr_regex: 0,
+    ocr_ner: 0,
+    dom_attribute: 0,
+  };
+
+  let totalTokensMasked = 0;
+  let domMaskedFields = 0;
+
+  // Build a lookup: elementId → matches
+  const matchesByElement = {};
+  for (const em of elementMatches) {
+    matchesByElement[em.elementId] = em.matches;
+  }
+
+  // Deep clone the DOM snapshot so we don't modify the original
+  const sanitizedDOM = JSON.parse(JSON.stringify(domSnapshot));
+
+  // Process each element
+  if (sanitizedDOM.elements && Array.isArray(sanitizedDOM.elements)) {
+    for (const element of sanitizedDOM.elements) {
+      const matches = matchesByElement[element.id];
+      if (!matches || matches.length === 0) continue;
+
+      let elementModified = false;
+
+      // Process text content
+      if (element.text) {
+        const result = replaceTextWithTokens(element.text, matches, redactionMap);
+        if (result.modified) {
+          element.text = result.text;
+          elementModified = true;
+          totalTokensMasked += result.tokensCreated;
+          updateBreakdown(piiBreakdown, matches);
+          updateDetectionMethods(detectionMethods, matches);
+        }
+      }
+
+      // Process placeholder (less common, but can contain PII hints)
+      if (element.placeholder) {
+        const result = replaceTextWithTokens(element.placeholder, matches, redactionMap);
+        if (result.modified) {
+          element.placeholder = result.text;
+          elementModified = true;
+        }
+      }
+
+      // Process href (URLs can contain email/phone in query params)
+      if (element.href) {
+        const result = replaceTextWithTokens(element.href, matches, redactionMap);
+        if (result.modified) {
+          element.href = result.text;
+          elementModified = true;
+        }
+      }
+
+      // Handle password fields — mark as redacted, don't send any value
+      if (element.type === 'password') {
+        element.text = '[PASSWORD_FIELD]';
+        element.value = '[PASSWORD_FIELD]';
+        elementModified = true;
+        totalTokensMasked++;
+        piiBreakdown.other++;
+        detectionMethods.dom_attribute++;
+      }
+
+      if (elementModified) {
+        domMaskedFields++;
+      }
+    }
+  }
+
+  // Process forms — redact any sensitive field values
+  if (sanitizedDOM.forms && Array.isArray(sanitizedDOM.forms)) {
+    for (const form of sanitizedDOM.forms) {
+      // The form structure itself (field names) is safe to send
+      // But mark which fields have vault data available
+      // (This is coordinated with vault-manager.js by Dev 4)
+    }
+  }
+
+  // Build the token manifest (sent to server — just the token names, not values)
+  const tokensUsed = Object.keys(redactionMap.tokens);
+
+  return {
+    sanitizedDOM,
+    redactionMap,
+    privacyStats: {
+      faces_redacted: 0, // Set by image redaction
+      pii_tokens_masked: totalTokensMasked,
+      dom_masked_fields: domMaskedFields,
+      pii_breakdown: piiBreakdown,
+      detection_methods: detectionMethods,
+    },
+    tokenManifest: {
+      tokens_used: tokensUsed,
+      total_tokens: tokensUsed.length,
+    },
+  };
+}
+
+/**
+ * Replace PII values in text with tokens, using longest-match-first strategy.
+ * 
+ * @param {string} text - Original text
+ * @param {Array<{type: string, value: string, start: number, end: number}>} matches - PII matches
+ * @param {RedactionMap} redactionMap - Map to populate with token → value pairs
+ * @returns {{text: string, modified: boolean, tokensCreated: number}}
+ */
+function replaceTextWithTokens(text, matches, redactionMap) {
+  if (!text || !matches || matches.length === 0) {
+    return { text, modified: false, tokensCreated: 0 };
+  }
+
+  // Sort matches by value length (longest first) to prevent partial replacements
+  // e.g., "aditya@gmail.com" should be replaced before "aditya"
+  const sortedMatches = [...matches]
+    .filter(m => m.value && m.value.length > 0 && m.value !== '[hidden]')
+    .sort((a, b) => b.value.length - a.value.length);
+
+  let resultText = text;
+  let tokensCreated = 0;
+  const usedTokens = new Map(); // value → token (reuse same token for same value)
+
+  for (const match of sortedMatches) {
+    const value = match.value;
+    
+    // Check if we already have a token for this exact value (dedup)
+    let token;
+    if (usedTokens.has(value)) {
+      token = usedTokens.get(value);
+    } else {
+      token = getNextToken(match.type);
+      usedTokens.set(value, token);
+      redactionMap.tokens[token] = value;
+      tokensCreated++;
+    }
+
+    // Replace all occurrences of this value in the text
+    // Use a simple string replace (not regex) to avoid special character issues
+    let idx = resultText.indexOf(value);
+    while (idx !== -1) {
+      resultText = resultText.substring(0, idx) + token + resultText.substring(idx + value.length);
+      idx = resultText.indexOf(value, idx + token.length);
+    }
+  }
+
+  return {
+    text: resultText,
+    modified: resultText !== text,
+    tokensCreated,
+  };
+}
+
+/**
+ * Update PII breakdown counts
+ */
+function updateBreakdown(breakdown, matches) {
+  for (const m of matches) {
+    switch (m.type) {
+      case 'EMAIL': breakdown.emails++; break;
+      case 'PHONE': breakdown.phones++; break;
+      case 'NAME': breakdown.names++; break;
+      case 'ADDRESS': breakdown.addresses++; break;
+      case 'AADHAAR': breakdown.aadhaar++; break;
+      case 'PAN': breakdown.pan++; break;
+      case 'CARD': breakdown.cards++; break;
+      case 'DOB': breakdown.dob++; break;
+      case 'UPI': breakdown.upi++; break;
+      default: breakdown.other++; break;
+    }
+  }
+}
+
+/**
+ * Update detection method counts
+ */
+function updateDetectionMethods(methods, matches) {
+  for (const m of matches) {
+    switch (m.method) {
+      case 'REGEX': methods.regex++; break;
+      case 'NER': methods.ner++; break;
+      case 'OCR_REGEX': methods.ocr_regex++; break;
+      case 'OCR_NER': methods.ocr_ner++; break;
+      case 'DOM_ATTRIBUTE': methods.dom_attribute++; break;
+      default: methods.regex++; break;
+    }
+  }
+}
+
+// ─── Image Redaction ────────────────────────────────────────────────────────────
+
+/**
+ * Redact PII from a screenshot image using OffscreenCanvas.
+ * Draws solid black rectangles over face bounding boxes and PII text regions.
+ * 
+ * Why black rectangles instead of blur:
+ * - Faster to render (simple fillRect vs convolution filter)
+ * - Guaranteed privacy (blur can sometimes be reversed with deblurring algorithms)
+ * - Clearly visible as redacted (important for demo/evaluation)
+ * - Smaller output file size
+ * 
+ * @param {ImageBitmap|null} screenshot - Original screenshot
+ * @param {Array<{bbox: number[], confidence?: number}>} faceBBs - Face bounding boxes from vision worker (BlazeFace)
+ * @param {Array<{type: string, bbox: number[], value?: string}>} textPIIRegions - PII text regions from OCR
+ * @param {object} [options={}] - Redaction options
+ * @param {number} [options.facePadding=0.1] - Percentage padding around face boxes (0.1 = 10%)
+ * @param {number} [options.textPadding=2] - Pixel padding around text PII boxes
+ * @param {number} [options.jpegQuality=0.85] - JPEG output quality (0-1)
+ * @returns {Promise<{redactedBase64: string|null, facesRedacted: number, regionsRedacted: number}>}
+ */
+export async function redactImage(screenshot, faceBBs = [], textPIIRegions = [], options = {}) {
+  if (!screenshot) {
+    return { redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 };
+  }
+
+  const {
+    facePadding = 0.1,
+    textPadding = 2,
+    jpegQuality = 0.85,
+  } = options;
+
+  try {
+    // Get image dimensions
+    let width, height;
+    if (screenshot instanceof ImageBitmap) {
+      width = screenshot.width;
+      height = screenshot.height;
+    } else if (screenshot.width && screenshot.height) {
+      width = screenshot.width;
+      height = screenshot.height;
+    } else {
+      console.error('[REDACT] Cannot determine image dimensions');
+      return { redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 };
+    }
+
+    // Create OffscreenCanvas and draw the original image
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    if (screenshot instanceof ImageBitmap) {
+      ctx.drawImage(screenshot, 0, 0);
+    } else if (screenshot instanceof ImageData) {
+      ctx.putImageData(screenshot, 0, 0);
+    }
+
+    let facesRedacted = 0;
+    let regionsRedacted = 0;
+
+    // ── Redact faces (solid black rectangles with padding) ────────────────
+    ctx.fillStyle = '#000000';
+
+    for (const face of faceBBs) {
+      if (!face.bbox || face.bbox.length < 4) continue;
+
+      const [x, y, w, h] = face.bbox;
+
+      // Add padding around the face
+      const padX = w * facePadding;
+      const padY = h * facePadding;
+
+      const rx = Math.max(0, Math.round(x - padX));
+      const ry = Math.max(0, Math.round(y - padY));
+      const rw = Math.min(width - rx, Math.round(w + 2 * padX));
+      const rh = Math.min(height - ry, Math.round(h + 2 * padY));
+
+      ctx.fillRect(rx, ry, rw, rh);
+      facesRedacted++;
+    }
+
+    // ── Redact text PII regions (solid black rectangles) ─────────────────
+    for (const region of textPIIRegions) {
+      if (!region.bbox || region.bbox.length < 4) continue;
+
+      const [x, y, w, h] = region.bbox;
+
+      const rx = Math.max(0, Math.round(x - textPadding));
+      const ry = Math.max(0, Math.round(y - textPadding));
+      const rw = Math.min(width - rx, Math.round(w + 2 * textPadding));
+      const rh = Math.min(height - ry, Math.round(h + 2 * textPadding));
+
+      ctx.fillRect(rx, ry, rw, rh);
+      regionsRedacted++;
+    }
+
+    // ── Encode to JPEG base64 ────────────────────────────────────────────
+    const blob = await canvas.convertToBlob({
+      type: 'image/jpeg',
+      quality: jpegQuality,
+    });
+
+    const base64 = await blobToBase64(blob);
+
+    return {
+      redactedBase64: `data:image/jpeg;base64,${base64}`,
+      facesRedacted,
+      regionsRedacted,
+    };
+  } catch (error) {
+    console.error('[REDACT] Image redaction failed:', error);
+    return { redactedBase64: null, facesRedacted: 0, regionsRedacted: 0 };
+  }
+}
+
+/**
+ * Convert a Blob to base64 string.
+ * @param {Blob} blob
+ * @returns {Promise<string>}
+ */
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ─── Restore Utilities (Client-Only) ────────────────────────────────────────────
+
+/**
+ * Look up the original value for a redaction token.
+ * Used by the extension when executing TYPE_FROM_VAULT or similar actions.
+ * This function NEVER sends data to the server.
+ * 
+ * @param {RedactionMap} redactionMap - The client-only redaction map
+ * @param {string} token - Token to look up (e.g., "[EMAIL_1]")
+ * @returns {string|null} Original value or null if not found
+ */
+export function resolveToken(redactionMap, token) {
+  if (!redactionMap || !redactionMap.tokens) return null;
+  return redactionMap.tokens[token] || null;
+}
+
+/**
+ * Restore all tokens in a text string back to their original values.
+ * Used for local operations only — NEVER called before sending data to server.
+ * 
+ * @param {string} text - Text with tokens
+ * @param {RedactionMap} redactionMap - Client-only redaction map
+ * @returns {string} Text with original values restored
+ */
+export function restoreTokens(text, redactionMap) {
+  if (!text || !redactionMap || !redactionMap.tokens) return text;
+
+  let restored = text;
+  for (const [token, value] of Object.entries(redactionMap.tokens)) {
+    // Use simple string replace to avoid regex special char issues
+    while (restored.includes(token)) {
+      restored = restored.replace(token, value);
+    }
+  }
+
+  return restored;
+}
+
+// ─── Exported Types ─────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} RedactedDOMResult
+ * @property {object} sanitizedDOM - DOM snapshot with PII replaced by tokens
+ * @property {RedactionMap} redactionMap - Token → original value mapping (NEVER SENT TO SERVER)
+ * @property {object} privacyStats - { faces_redacted, pii_tokens_masked, dom_masked_fields, pii_breakdown, detection_methods }
+ * @property {object} tokenManifest - { tokens_used: string[], total_tokens: number }
+ */
