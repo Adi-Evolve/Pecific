@@ -40,4 +40,13 @@
   });
 
   console.log('[dev2] content-script.js injected and ready');
+
+  // Dev-only: log a snapshot immediately so you can verify the extractor
+  // without needing to switch the DevTools console context. Remove or
+  // gate behind a debug flag before Phase 7 polish.
+  try {
+    console.log('[dev2] sample snapshot:', extractor.extractSnapshot());
+  } catch (err) {
+    console.error('[dev2] extractSnapshot failed on injection:', err);
+  }
 })();
