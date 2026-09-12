@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Redacted Payload",
+  "description": "Fully sanitized combined payload from Dev 3's privacy engine. This is the USER_QUERY.payload input to the server. Includes privacy_stats for auditability.",
+  "type": "object",
+  "required": ["query", "current_url", "page_title", "viewport", "sanitized_dom", "vault_manifest", "privacy_stats"],
+  "properties": {
+    "query": { "type": "string", "description": "User's natural language goal" },
+    "current_url": { "type": "string", "description": "Current page URL" },
+    "page_title": { "type": "string", "description": "Current page title" },
+    "viewport": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "scroll_x": { "type": "integer", "default": 0 },
+        "scroll_y": { "type": "integer", "default": 0 }
+      }
+    },
+    "sanitized_dom": { "$ref": "dom_snapshot.schema.json" },
+    "vault_manifest": { "$ref": "vault_manifest.schema.json" },
+    "redacted_screenshot": {
+      "type": ["string", "null"],
+      "description": "Base64-encoded redacted screenshot (data:image/jpeg;base64,...)"
+    },
+    "privacy_stats": {
+      "type": "object",
+      "properties": {
+        "faces_redacted": { "type": "integer", "default": 0 },
+        "pii_tokens_masked": { "type": "integer", "default": 0 },
+        "dom_masked_fields": { "type": "integer", "default": 0 }
+      }
+    }
+  }
+}

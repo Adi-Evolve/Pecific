@@ -1,0 +1,96 @@
+{
+  "session_id": "sess_1726051200_abc",
+  "goal": "Search Sony WH-1000XM5 on Amazon, filter 4 stars & above, open Flipkart in another tab to compare, and extract prices.",
+  "plan": {
+    "goal": "Search Sony WH-1000XM5 on Amazon, filter 4 stars, open Flipkart in parallel tab, extract & compare prices",
+    "chain_of_thought": "1. Amazon tab is active. Type query into search bar and press Enter. 2. Filter 4 stars & above. 3. Extract top Amazon deal. 4. Open parallel tab for Flipkart. 5. Search same item on Flipkart. 6. Extract top Flipkart deal. 7. Synthesize comparison report.",
+    "total_steps": 7,
+    "steps": [
+      {
+        "id": 1,
+        "action": "TYPE",
+        "target": { "selector": "#twotabsearchtextbox", "element_id": "e_search" },
+        "value": "Sony WH-1000XM5",
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Type search term into Amazon search box",
+        "verify": { "method": "DOM_CHECK", "condition": "value_matches" },
+        "fallback": { "action": "HYBRID", "reason": "Retry using visual click" },
+        "timeout_ms": 5000
+      },
+      {
+        "id": 2,
+        "action": "PRESS_KEY",
+        "target": { "selector": "#twotabsearchtextbox" },
+        "key": "Enter",
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Submit Amazon search query",
+        "verify": { "method": "URL_CHECK", "condition": "url_contains('/s?k=')" },
+        "timeout_ms": 8000
+      },
+      {
+        "id": 3,
+        "action": "CLICK",
+        "target": { "selector": "section[aria-label='4 Stars & Up'] a", "text": "4 Stars & Up" },
+        "execution_mode": "HYBRID",
+        "protocol_level": "CAUTION",
+        "description": "Apply 4 stars & above rating filter",
+        "verify": { "method": "DOM_CHECK", "condition": "element_checked" },
+        "timeout_ms": 8000
+      },
+      {
+        "id": 4,
+        "action": "EXTRACT",
+        "target": { "selector": "div[data-component-type='s-search-result']" },
+        "extraction_type": "FIRST",
+        "selectors": {
+          "title": "h2 a span",
+          "price": ".a-price .a-offscreen",
+          "rating": ".a-icon-alt"
+        },
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Extract top Amazon product deal",
+        "verify": { "method": "DOM_CHECK", "condition": "element_present" }
+      },
+      {
+        "id": 5,
+        "action": "NEW_TAB",
+        "target": {
+          "url": "https://www.flipkart.com/search?q=Sony+WH-1000XM5",
+          "tab_purpose": "FLIPKART_COMPARE"
+        },
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Open Flipkart search in parallel tab",
+        "verify": { "method": "URL_CHECK", "condition": "url_contains('flipkart.com')" },
+        "timeout_ms": 10000
+      },
+      {
+        "id": 6,
+        "action": "EXTRACT",
+        "target": { "selector": "div._1AtVbE" },
+        "extraction_type": "FIRST",
+        "selectors": {
+          "title": "div._4rR01T",
+          "price": "div._30jeq3",
+          "rating": "div._3LWZlK"
+        },
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Extract top Flipkart product deal",
+        "verify": { "method": "DOM_CHECK", "condition": "element_present" }
+      },
+      {
+        "id": 7,
+        "action": "REPORT_RESULT",
+        "execution_mode": "DOM",
+        "protocol_level": "SAFE",
+        "description": "Compile structured comparison table for user",
+        "verify": { "method": "DOM_CHECK", "condition": "always_true" },
+        "timeout_ms": 5000
+      }
+    ]
+  }
+}

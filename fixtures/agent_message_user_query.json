@@ -1,0 +1,58 @@
+{
+  "type": "USER_QUERY",
+  "session_id": "sess_1726051200_abc",
+  "client_timestamp": 1726052000100,
+  "payload": {
+    "query": "Search Sony WH-1000XM5 on Amazon, filter 4 stars & above, open Flipkart in another tab to compare, and extract prices.",
+    "current_url": "https://www.amazon.in",
+    "page_title": "Online Shopping site in India",
+    "viewport": {
+      "width": 1280,
+      "height": 720,
+      "scroll_x": 0,
+      "scroll_y": 0
+    },
+    "sanitized_dom": {
+      "url": "https://www.amazon.in",
+      "title": "Online Shopping site in India",
+      "viewport": { "width": 1280, "height": 720 },
+      "elements": [
+        {
+          "id": "e_search",
+          "tag": "INPUT",
+          "selector": "#twotabsearchtextbox",
+          "type": "text",
+          "interactive": true,
+          "role": "searchbox",
+          "text": null,
+          "placeholder": "Search Amazon.in",
+          "value": null,
+          "coordinates": [320, 24, 600, 38]
+        },
+        {
+          "id": "e_submit",
+          "tag": "INPUT",
+          "selector": "#nav-search-submit-button",
+          "type": "submit",
+          "interactive": true,
+          "role": "button",
+          "text": null,
+          "placeholder": null,
+          "value": "Go",
+          "coordinates": [925, 24, 45, 38]
+        }
+      ]
+    },
+    "vault_manifest": {
+      "has_email": true,
+      "has_password": true,
+      "has_phone": true
+    },
+    "redacted_screenshot": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBD...",
+    "privacy_stats": {
+      "faces_redacted": 1,
+      "pii_tokens_masked": 0,
+      "dom_masked_fields": 0
+    }
+  }
+}

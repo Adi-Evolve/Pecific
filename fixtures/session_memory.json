@@ -1,0 +1,27 @@
+{
+  "session_id": "sess_1726051200_abc",
+  "created_at": 1726051200.45,
+  "updated_at": 1726051340.12,
+  "user_id": "local_user",
+  "memory": {
+    "preferences": {
+      "budget_max": 30000,
+      "preferred_brand": "Sony",
+      "pincode": "560001"
+    },
+    "completed_goals": [
+      {
+        "goal": "Search Sony WH-1000XM5 on Amazon",
+        "timestamp": 1726051250.0,
+        "steps_count": 5,
+        "status": "COMPLETED"
+      }
+    ],
+    "extracted_entities": {
+      "selected_item": "Sony WH-1000XM5 (Silver)",
+      "lowest_price": "₹24,990"
+    }
+  },
+  "current_plan_id": "plan_9912",
+  "active_tab_id": 1042
+}

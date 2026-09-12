@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vault Manifest",
+  "description": "Key-presence-only format for the credential vault. Owned by Dev 4, consumed by Dev 5. NEVER contains actual values.",
+  "type": "object",
+  "required": ["has_email", "has_password"],
+  "properties": {
+    "has_email": { "type": "boolean", "description": "Whether user has stored an email in the vault" },
+    "has_password": { "type": "boolean", "description": "Whether user has stored a password in the vault" },
+    "has_phone": { "type": "boolean", "default": false },
+    "has_name": { "type": "boolean", "default": false },
+    "has_address": { "type": "boolean", "default": false },
+    "has_card_number": { "type": "boolean", "default": false },
+    "has_aadhaar": { "type": "boolean", "default": false },
+    "has_pan": { "type": "boolean", "default": false }
+  },
+  "additionalProperties": false
+}
