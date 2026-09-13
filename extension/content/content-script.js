@@ -9,22 +9,31 @@
 (function () {
   'use strict';
 
-  // dom-extractor.js is loaded before this file (see manifest content_scripts
-  // order) and exposes window.DomExtractor.
+  // dom-extractor.js and action-executor.js are loaded before this file
+  // (see manifest content_scripts order) and expose window.DomExtractor /
+  // window.ActionExecutor.
   const extractor = window.DomExtractor;
+  const executor = window.ActionExecutor;
 
   /**
-   * Console-testable entry point.
-   * In a live page's dev console: window.__domExtractor.extractSnapshot()
+   * Console-testable entry points.
+   * In a live page's dev console (same isolated world — see content-script
+   * context in the DevTools context dropdown):
+   *   window.__domExtractor.extractSnapshot()
+   *   window.__actionExecutor.execute({ id: 1, action: "CLICK", target: { selector: "..." } })
    */
   window.__domExtractor = {
     extractSnapshot: () => extractor.extractSnapshot(),
   };
+  window.__actionExecutor = {
+    execute: (step) => executor.execute(step),
+  };
 
   /**
    * Message listener — this is how the service worker (Dev1) will eventually
-   * request a snapshot. Phase 1: just handle the one message type we need to
-   * demo the extractor working end-to-end within the extension itself.
+   * request a snapshot or an action execution. Phase 1/2: handle both
+   * message types so each module is demoable within the extension itself,
+   * with no server or other module needed yet.
    */
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'REQUEST_DOM_SNAPSHOT') {
@@ -36,7 +45,13 @@
       }
       return true; // keep the message channel open for async sendResponse
     }
-    // action-executor.js message handling arrives in Phase 2.
+
+    if (message && message.type === 'EXECUTE_ACTION') {
+      executor.execute(message.step)
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
   });
 
   console.log('[dev2] content-script.js injected and ready');
