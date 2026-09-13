@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     LLM_MODEL_NAME: str = "Qwen/Qwen3-8B"
     LLM_LOAD_IN_4BIT: bool = True
     LLM_DEVICE: str = "cuda"  # "cuda" for GPU, "cpu" for testing
-    LLM_MAX_NEW_TOKENS: int = 2048
+    LLM_MAX_NEW_TOKENS: int = 1024
     LLM_TEMPERATURE: float = 0.1
     LLM_TOP_P: float = 0.95
     LLM_FLASH_ATTENTION: bool = False  # MUST be False on T4 (no Ampere+)
