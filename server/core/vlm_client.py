@@ -9,7 +9,7 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# VLM endpoint paths
+# VLM endpoint paths — matching Dev 6's VLM server
 VLM_ENDPOINTS = {
     "health": "/health",
     "detect_obstacles": "/detect-obstacles",

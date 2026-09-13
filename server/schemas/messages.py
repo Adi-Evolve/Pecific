@@ -40,6 +40,6 @@ class WebSocketMessage(BaseModel):
     """Standard WebSocket message envelope (co-owned with Dev 1)."""
 
     type: MessageType
-    session_id: str = Field(..., pattern=r"^sess_[0-9]+_[a-zA-Z0-9]+$")
+    session_id: str = Field(..., min_length=1)
     client_timestamp: Optional[float] = None
     payload: dict[str, Any] = Field(default_factory=dict)

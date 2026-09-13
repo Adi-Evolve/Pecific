@@ -28,7 +28,7 @@ class StepState(str, Enum):
 
 # Valid state transitions
 VALID_TRANSITIONS: dict[StepState, set[StepState]] = {
-    StepState.PENDING: {StepState.RUNNING, StepState.CANCELLED, StepState.SKIPPED},
+    StepState.PENDING: {StepState.RUNNING, StepState.CANCELLED, StepState.SKIPPED, StepState.BLOCKED_APPROVAL},
     StepState.RUNNING: {StepState.SUCCESS, StepState.FAILED, StepState.BLOCKED_APPROVAL},
     StepState.SUCCESS: set(),
     StepState.FAILED: {StepState.RETRYING, StepState.HYBRID_FALLBACK, StepState.CANCELLED},

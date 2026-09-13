@@ -92,9 +92,14 @@
 
 ## Recent Decisions
 
-- `execution_mode` defaults to `DOM` for actions like EXTRACT/REPORT_RESULT that don't need a specific mode.
-- Protocol classification uses keyword matching on description text (critical keywords: purchase, login, delete, payment; caution keywords: form, fill, submit, filter).
-- Qwen3-14B prompt engineering chosen over fine-tuning for Phase 2; fine-tuning deferred to Phase 6/7 if failure rate >10%.
+- Changed LLM from Qwen3-14B to Qwen3-8B (faster inference, fits T4 comfortably)
+- Prompt template uses exactly 7 rules from spec with bracketed variables {goal}, {url}, {sanitized_dom}, {vault_manifest}, {completed_steps}, {session_memory}
+- Error routing uses error_code field (not string matching on error message)
+- All 5 error codes implemented: SELECTOR_NOT_FOUND, ELEMENT_OBSCURED, CAPTCHA_TRIGGERED, PAGE_TIMEOUT, AUTH_REQUIRED
+- DYNAMIC_OBSTACLE message now sent when VLM detects mid-execution obstacles
+- Protocol library expanded: SAFE_ACTIONS, SAFE_INTERACTIVE_ACTIONS, CAUTION_ACTIONS, CRITICAL_ACTIONS with keyword-based augmentation
+- VLM client endpoints standardized: /detect-obstacles, /ground, /verify, /analyze
+- Plan cached per-session so tracker-based dispatch sends full step data
 - Task tracker uses global registry (dict) for per-session trackers — sufficient for single-server deployment.
 - Session persistence uses SQLite (single file) rather than PostgreSQL — simpler for hackathon deployment.
 - Memory store uses same SQLite database as sessions — avoids connection management complexity.

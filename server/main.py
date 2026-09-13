@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     # Load LLM on startup
     try:
         from models.llm_loader import load_llm
-        await load_llm(
+        load_llm(
             model_name=settings.LLM_MODEL_NAME,
             device=settings.LLM_DEVICE,
             load_in_4bit=settings.LLM_LOAD_IN_4BIT,

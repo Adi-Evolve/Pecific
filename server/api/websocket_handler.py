@@ -15,8 +15,14 @@ from state.task_tracker import get_tracker, remove_tracker, StepState
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Per-session pending goals (USER_QUERY arrives before STEP_RESULT with data)
+_pending_goals: dict[str, dict[str, Any]] = {}
 
-@router.websocket("/ws")
+# Per-session plan cache (so tracker-based dispatch can look up step details)
+_plan_cache: dict[str, ActionPlan] = {}
+
+
+@router.websocket("/ws/browser-agent")
 async def websocket_endpoint(ws: WebSocket):
     """WebSocket handler — validates envelope, routes by message type."""
     await ws.accept()
@@ -32,7 +38,7 @@ async def websocket_endpoint(ws: WebSocket):
                 await _send_error(ws, "INVALID_JSON", "Message is not valid JSON")
                 continue
 
-            # Validate envelope
+            # Validate envelope — be lenient with session_id format
             try:
                 msg = WebSocketMessage(**data)
             except Exception as e:
@@ -40,19 +46,23 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
 
             session_id = msg.session_id
+            print(f"[WS] Received {msg.type.value} from {session_id}")
             logger.info("Received %s from %s", msg.type.value, session_id)
 
             # Route by message type
             try:
                 await _route_message(ws, msg)
             except Exception as e:
+                print(f"[WS] Error handling {msg.type.value}: {e}", flush=True)
                 logger.exception("Error handling %s: %s", msg.type.value, e)
-                await _send_error(ws, "INTERNAL_ERROR", str(e))
+                await _send_error(ws, "INTERNAL_ERROR", str(e), session_id)
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected: %s", session_id)
         if session_id:
             remove_tracker(session_id)
+            _pending_goals.pop(session_id, None)
+            _plan_cache.pop(session_id, None)
     except Exception as e:
         logger.exception("WebSocket error: %s", e)
         try:
@@ -77,91 +87,212 @@ async def _route_message(ws: WebSocket, msg: WebSocketMessage):
     if handler:
         await handler(ws, msg)
     else:
-        await _send_error(ws, "UNKNOWN_TYPE", f"Unhandled message type: {msg.type.value}")
+        await _send_error(ws, "UNKNOWN_TYPE", f"Unhandled message type: {msg.type.value}", msg.session_id)
 
 
 # ---------------------------------------------------------------------------
-# USER_QUERY — the main entry point: plan generation + approval gate
+# USER_QUERY — stores goal, waits for STEP_RESULT with sanitized data
 # ---------------------------------------------------------------------------
 
 async def _handle_user_query(ws: WebSocket, msg: WebSocketMessage):
-    """Process a user query: generate plan, classify steps, emit PLAN or APPROVAL_REQUIRED."""
-    from state.session_manager import get_session_manager
-
+    """Store the user goal. Plan generation happens when STEP_RESULT arrives with data."""
     payload = msg.payload
     goal = payload.get("query", "")
+    url = payload.get("url", "")
 
-    # Ensure session exists in the session manager
+    _pending_goals[msg.session_id] = {
+        "goal": goal,
+        "url": url,
+        "viewport": payload.get("viewport", {}),
+    }
+    print(f"[WS] Stored goal for {msg.session_id}: {goal[:80]}")
+    logger.info("Stored goal for %s: %s", msg.session_id, goal[:80])
+
+    # If the USER_QUERY already contains sanitized_dom, generate plan immediately
+    if payload.get("sanitized_dom") or payload.get("domSnapshot"):
+        await _generate_plan_from_payload(ws, msg, payload)
+
+
+# ---------------------------------------------------------------------------
+# STEP_RESULT — handles both initial data (plan generation) and step execution
+# ---------------------------------------------------------------------------
+
+async def _handle_step_result(ws: WebSocket, msg: WebSocketMessage):
+    """Handle step result from extension."""
+    payload = msg.payload
+    sanitized_dom = payload.get("sanitized_dom") or payload.get("domSnapshot")
+    has_step_id = "step_id" in payload
+    print(f"[WS] STEP_RESULT: has_dom={sanitized_dom is not None}, has_step_id={has_step_id}", flush=True)
+
+    if sanitized_dom and not has_step_id:
+        # Initial data payload — generate plan
+        await _generate_plan_from_payload(ws, msg, payload)
+    elif has_step_id:
+        # Step execution result — handle it
+        await _handle_step_execution_result(ws, msg)
+    else:
+        logger.warning("STEP_RESULT with no sanitized_dom and no step_id from %s", msg.session_id)
+
+
+async def _generate_plan_from_payload(ws: WebSocket, msg: WebSocketMessage, payload: dict):
+    """Generate a plan from the received sanitized data."""
+    from state.session_manager import get_session_manager
+
+    session_id = msg.session_id
+
+    pending = _pending_goals.pop(session_id, {})
+    goal = pending.get("goal", "") or payload.get("query", "")
+    url = pending.get("url", "") or payload.get("url", "")
+
+    sanitized_dom = payload.get("sanitized_dom", {})
+    if not sanitized_dom and payload.get("domSnapshot"):
+        sanitized_dom = payload.get("domSnapshot", {})
+
+    # Handle vault_manifest — extension sends tokenManifest, we need fields format
+    vault_manifest = payload.get("vault_manifest", {})
+    if not vault_manifest and payload.get("tokenManifest"):
+        token_manifest = payload.get("tokenManifest", {})
+        # Convert tokenManifest to fields format for the planner
+        token_types = token_manifest.get("token_types", {})
+        fields = {}
+        for token_key in token_manifest.get("tokens_used", []):
+            pii_type = token_types.get(token_key, "unknown")
+            fields[pii_type.lower()] = True
+        vault_manifest = {"fields": fields, "locked": False}
+
+    redacted_screenshot = payload.get("redacted_screenshot")
+
     manager = get_session_manager()
-    manager.create_session(msg.session_id, goal=goal)
+    manager.create_session(session_id, goal=goal)
+
+    print(f"[WS] Generating plan for {session_id}: goal={goal[:50]}, elements={len(sanitized_dom.get('elements', []))}")
+    logger.info("Generating plan for %s: goal=%s, dom_elements=%d",
+                session_id, goal[:50],
+                len(sanitized_dom.get("elements", [])))
+
+    # Acknowledge that plan generation is in progress
+    await ws.send_text(json.dumps({
+        "type": "ACK",
+        "session_id": session_id,
+        "payload": {"status": "generating_plan", "message": "Processing your request..."},
+    }))
 
     try:
         plan = await generate_plan(
             goal=goal,
-            url=payload.get("current_url", ""),
-            sanitized_dom=payload.get("sanitized_dom", {}),
-            vault_manifest=payload.get("vault_manifest", {}),
-            session_id=msg.session_id,
-            redacted_screenshot=payload.get("redacted_screenshot"),
+            url=url,
+            sanitized_dom=sanitized_dom,
+            vault_manifest=vault_manifest,
+            session_id=session_id,
+            redacted_screenshot=redacted_screenshot,
         )
-    except ValueError as e:
-        await _send_error(ws, "PLAN_GENERATION_FAILED", str(e))
+    except Exception as e:
+        print(f"[WS] Plan generation failed for {session_id}: {e}", flush=True)
+        logger.exception("Plan generation failed for %s", session_id)
+        await _send_error(ws, "PLAN_GENERATION_FAILED", str(e), session_id)
         return
 
-    # Classify protocol levels
-    classifications = classify_plan_steps(plan)
+    classify_plan_steps(plan)
 
-    # Initialize task tracker
-    tracker = get_tracker(msg.session_id)
+    # Cache plan for tracker-based dispatch
+    _plan_cache[session_id] = plan
+
+    tracker = get_tracker(session_id)
     step_ids = [s.id for s in plan.plan.steps]
-    tracker.initialize_plan(plan_id=f"plan_{msg.session_id}", step_ids=step_ids)
+    tracker.initialize_plan(plan_id=f"plan_{session_id}", step_ids=step_ids)
 
-    # Update session with plan info
     manager.update_session(
-        msg.session_id,
+        session_id,
         goal=goal,
-        plan_id=f"plan_{msg.session_id}",
+        plan_id=f"plan_{session_id}",
         step_ids=step_ids,
     )
 
-    # Mark all non-critical steps as PENDING, critical steps as BLOCKED_APPROVAL
     if has_critical_steps(plan):
         critical_ids = {s.id for s in get_critical_steps(plan)}
         for step in plan.plan.steps:
             if step.id in critical_ids:
                 tracker.mark_blocked_approval(step.id)
-            # Non-critical steps stay PENDING
 
-        # Send the full plan first
-        await _send_plan(ws, msg.session_id, plan)
+        await _send_plan(ws, session_id, plan)
 
-        # Send approval required for the first critical step
         critical = get_critical_steps(plan)
         first_critical = critical[0]
         await ws.send_text(json.dumps({
             "type": "APPROVAL_REQUIRED",
-            "session_id": msg.session_id,
+            "session_id": session_id,
             "payload": {
-                "step": first_critical.model_dump(),
+                "step": _step_to_extension_format(first_critical),
                 "reason": f"Step {first_critical.id}: {first_critical.description} — requires user approval",
                 "vault_key": first_critical.vault_key,
             },
         }))
         logger.info("Sent APPROVAL_REQUIRED for step %d", first_critical.id)
     else:
-        # No critical steps — send full plan and dispatch first step
-        await _send_plan(ws, msg.session_id, plan)
-        await _dispatch_next_step(ws, msg.session_id, plan)
+        await _send_plan(ws, session_id, plan)
+        await _dispatch_next_step(ws, session_id, plan)
 
+
+# ---------------------------------------------------------------------------
+# Plan & step dispatch
+# ---------------------------------------------------------------------------
 
 async def _send_plan(ws: WebSocket, session_id: str, plan: ActionPlan):
     """Send a PLAN message to the client."""
     await ws.send_text(json.dumps({
         "type": "PLAN",
         "session_id": session_id,
-        "payload": plan.model_dump(),
+        "payload": {
+            "goal": plan.goal,
+            "plan": {
+                "goal": plan.goal,
+                "chain_of_thought": plan.plan.chain_of_thought,
+                "total_steps": plan.plan.total_steps,
+                "steps": [_step_to_extension_format(s) for s in plan.plan.steps],
+            },
+        },
     }))
     logger.info("Sent PLAN with %d steps", plan.plan.total_steps)
+
+
+def _step_to_extension_format(step) -> dict:
+    """Convert a PlanStep to the format the extension expects."""
+    target = {}
+    if step.target:
+        if step.target.selector:
+            target["selector"] = step.target.selector
+        if step.target.coordinates:
+            target["coordinates"] = step.target.coordinates
+        if step.target.url:
+            target["url"] = step.target.url
+        if step.target.text:
+            target["text"] = step.target.text
+        if step.target.tab_id is not None:
+            target["tab_id"] = step.target.tab_id
+
+    result = {
+        "id": step.id,
+        "action": step.action.value,
+        "target": target if target else None,
+        "value": step.value,
+        "key": step.key,
+        "vault_key": step.vault_key,
+        "execution_mode": step.execution_mode.value,
+        "protocol_level": step.protocol_level,
+        "description": step.description,
+        "timeout_ms": step.timeout_ms,
+    }
+
+    if step.verify:
+        result["verify"] = {
+            "method": step.verify.method,
+            "condition": step.verify.condition,
+        }
+
+    if step.duration_ms is not None:
+        result["duration_ms"] = step.duration_ms
+
+    return result
 
 
 async def _dispatch_next_step(ws: WebSocket, session_id: str, plan: ActionPlan):
@@ -174,17 +305,19 @@ async def _dispatch_next_step(ws: WebSocket, session_id: str, plan: ActionPlan):
             await ws.send_text(json.dumps({
                 "type": "TASK_COMPLETE",
                 "session_id": session_id,
-                "payload": {"status": "completed", "message": "All steps completed"},
+                "payload": {
+                    "summary": "All steps completed successfully",
+                    "steps_completed": len(tracker.get_completed_step_ids()),
+                    "total": tracker.get_summary()["total_steps"],
+                },
             }))
             logger.info("Plan complete for session %s", session_id)
         elif tracker.is_plan_failed():
-            await _send_error(ws, "PLAN_FAILED", "All steps exhausted retries")
+            await _send_error(ws, "PLAN_FAILED", "All steps exhausted retries", session_id)
         return
 
-    # Mark step as running
     tracker.mark_running(next_step.step_id)
 
-    # Find the step details from the plan
     step_detail = None
     for s in plan.plan.steps:
         if s.id == next_step.step_id:
@@ -192,19 +325,12 @@ async def _dispatch_next_step(ws: WebSocket, session_id: str, plan: ActionPlan):
             break
 
     if step_detail:
+        # Send NEXT_STEP with step nested under "step" key (extension expects this)
         await ws.send_text(json.dumps({
             "type": "NEXT_STEP",
             "session_id": session_id,
             "payload": {
-                "step_id": next_step.step_id,
-                "action": step_detail.action.value,
-                "target": step_detail.target.model_dump() if step_detail.target else None,
-                "value": step_detail.value,
-                "execution_mode": step_detail.execution_mode.value,
-                "protocol_level": step_detail.protocol_level,
-                "description": step_detail.description,
-                "verify": step_detail.verify.model_dump() if step_detail.verify else None,
-                "timeout_ms": step_detail.timeout_ms,
+                "step": _step_to_extension_format(step_detail),
             },
         }))
         logger.info("Dispatched step %d (%s)", next_step.step_id, step_detail.action.value)
@@ -214,128 +340,157 @@ async def _dispatch_next_step(ws: WebSocket, session_id: str, plan: ActionPlan):
 # STEP_RESULT — step execution result from extension
 # ---------------------------------------------------------------------------
 
-async def _handle_step_result(ws: WebSocket, msg: WebSocketMessage):
+async def _handle_step_execution_result(ws: WebSocket, msg: WebSocketMessage):
     """Handle step execution result from the extension.
 
-    Updates task tracker and routes error recovery via VLM.
+    Routes by error_code field per COMMUNICATION_SPEC.md §6.2:
+    - SELECTOR_NOT_FOUND → VLM /ground → HYBRID fallback
+    - ELEMENT_OBSCURED → VLM /detect-obstacles → DYNAMIC_OBSTACLE → DISMISS_POPUP
+    - CAPTCHA_TRIGGERED → CAPTCHA_HANDOFF → pause
+    - PAGE_TIMEOUT → WAIT(3000) → retry
+    - AUTH_REQUIRED → APPROVAL_REQUIRED → pause
     """
     payload = msg.payload
     step_id = payload.get("step_id")
-    status = payload.get("status")
-    error_code = payload.get("result", {}).get("error_code", "")
-    error_message = payload.get("result", {}).get("message", "")
-    logger.info("Step %s result: %s (error=%s)", step_id, status, error_code)
+    success = payload.get("success", False)
+    status = "success" if success else "error"
+    error_code = payload.get("error_code", "")
+    error_msg = payload.get("error", "")
+    screenshot = payload.get("redacted_screenshot")
+    logger.info("Step %s result: %s (error_code=%s)", step_id, status, error_code)
 
     tracker = get_tracker(msg.session_id)
 
-    # Determine next state from the result
-    next_state = tracker.handle_step_result(
-        step_id=step_id,
-        status=status,
-        error_code=error_code,
-        error_message=error_message,
-    )
+    if success:
+        tracker.mark_success(step_id)
+        await _dispatch_next_step_from_tracker(ws, msg.session_id)
+        return
 
-    # Error recovery paths per COMMUNICATION_SPEC.md §6.2
-    if status == "error" and error_code:
-        if error_code == "SELECTOR_NOT_FOUND":
-            screenshot = payload.get("redacted_screenshot")
-            if screenshot:
-                try:
-                    from core.vlm_client import ground_element
-                    result = await ground_element(screenshot, f"Find the element for step {step_id}")
-                    tracker.mark_hybrid_fallback(step_id)
+    # --- Error routing by error_code (not string matching) ---
+    tracker.mark_failed(step_id, error=error_msg, error_code=error_code)
+
+    if error_code == "SELECTOR_NOT_FOUND":
+        # Fall back to VLM /ground → dispatch click via coordinates
+        if screenshot:
+            try:
+                from core.vlm_client import ground_element
+                result = await ground_element(screenshot, f"Find the element for step {step_id}")
+                tracker.mark_hybrid_fallback(step_id)
+                await ws.send_text(json.dumps({
+                    "type": "NEXT_STEP",
+                    "session_id": msg.session_id,
+                    "payload": {
+                        "step": {
+                            "id": step_id,
+                            "action": "CLICK",
+                            "execution_mode": "HYBRID",
+                        },
+                        "vlm_result": result,
+                    },
+                }))
+                return
+            except Exception as e:
+                logger.warning("VLM ground fallback failed: %s", e)
+
+    elif error_code == "ELEMENT_OBSCURED":
+        # Detect obstacles → send DYNAMIC_OBSTACLE → DISMISS_POPUP
+        if screenshot:
+            try:
+                from core.vlm_client import detect_obstacles
+                result = await detect_obstacles(screenshot)
+                close_btn = result.get("result", {}).get("close_button")
+
+                # Send DYNAMIC_OBSTACLE notification to extension
+                await ws.send_text(json.dumps({
+                    "type": "DYNAMIC_OBSTACLE",
+                    "session_id": msg.session_id,
+                    "payload": {
+                        "step_id": step_id,
+                        "obstacle_type": result.get("result", {}).get("obstacle_type", "unknown"),
+                        "description": result.get("result", {}).get("description", ""),
+                        "recommended_action": "DISMISS_POPUP",
+                    },
+                }))
+
+                if close_btn:
                     await ws.send_text(json.dumps({
                         "type": "NEXT_STEP",
                         "session_id": msg.session_id,
                         "payload": {
-                            "step_id": step_id,
-                            "action": "CLICK",
-                            "execution_mode": "HYBRID",
-                            "vlm_result": result,
-                        },
-                    }))
-                    return
-                except Exception as e:
-                    logger.warning("VLM ground fallback failed: %s", e)
-
-        elif error_code == "ELEMENT_OBSCURED":
-            screenshot = payload.get("redacted_screenshot")
-            if screenshot:
-                try:
-                    from core.vlm_client import detect_obstacles
-                    result = await detect_obstacles(screenshot)
-                    close_btn = result.get("result", {}).get("close_button")
-                    if close_btn:
-                        tracker.mark_retrying(step_id)
-                        await ws.send_text(json.dumps({
-                            "type": "NEXT_STEP",
-                            "session_id": msg.session_id,
-                            "payload": {
-                                "step_id": step_id,
+                            "step": {
+                                "id": step_id,
                                 "action": "DISMISS_POPUP",
                                 "target": {"coordinates": close_btn.get("coordinates")},
                                 "execution_mode": "HYBRID",
+                                "protocol_level": "SAFE",
+                                "description": f"Dismiss {result.get('result', {}).get('obstacle_type', 'obstacle')}",
+                                "verify": {"method": "DOM_CHECK", "condition": "modal_closed"},
+                                "timeout_ms": 5000,
                             },
-                        }))
-                        return
-                except Exception as e:
-                    logger.warning("VLM obstacle detection failed: %s", e)
+                        },
+                    }))
+                    return
+            except Exception as e:
+                logger.warning("VLM obstacle detection failed: %s", e)
 
-        elif error_code == "CAPTCHA_TRIGGERED":
-            tracker.mark_blocked_approval(step_id)
-            await ws.send_text(json.dumps({
-                "type": "APPROVAL_REQUIRED",
-                "session_id": msg.session_id,
-                "payload": {
-                    "step_id": step_id,
+    elif error_code == "CAPTCHA_TRIGGERED":
+        tracker.mark_blocked_approval(step_id)
+        await ws.send_text(json.dumps({
+            "type": "APPROVAL_REQUIRED",
+            "session_id": msg.session_id,
+            "payload": {
+                "step": {
+                    "id": step_id,
                     "action": "CAPTCHA_HANDOFF",
                     "protocol_level": "CAUTION",
-                    "description": "Please solve the CAPTCHA on screen",
+                    "description": "Please solve the CAPTCHA on screen to continue",
                 },
-            }))
-            return
+                "reason": "CAPTCHA detected — requires manual user intervention",
+            },
+        }))
+        return
 
-        elif error_code == "PAGE_TIMEOUT":
-            tracker.set_error(step_id, error_message, error_code)
-            tracker.mark_retrying(step_id)
-            await ws.send_text(json.dumps({
-                "type": "NEXT_STEP",
-                "session_id": msg.session_id,
-                "payload": {
-                    "step_id": step_id,
+    elif error_code == "PAGE_TIMEOUT":
+        # Wait 3s then retry
+        await ws.send_text(json.dumps({
+            "type": "NEXT_STEP",
+            "session_id": msg.session_id,
+            "payload": {
+                "step": {
+                    "id": step_id,
                     "action": "WAIT",
                     "timeout_ms": 3000,
+                    "protocol_level": "SAFE",
                     "description": "Waiting for page load before retry",
+                    "verify": {"method": "DOM_CHECK", "condition": "always_true"},
                 },
-            }))
-            return
+            },
+        }))
+        return
 
-        elif error_code == "AUTH_REQUIRED":
-            tracker.mark_blocked_approval(step_id)
-            await ws.send_text(json.dumps({
-                "type": "APPROVAL_REQUIRED",
-                "session_id": msg.session_id,
-                "payload": {
-                    "step_id": step_id,
+    elif error_code == "AUTH_REQUIRED":
+        tracker.mark_blocked_approval(step_id)
+        await ws.send_text(json.dumps({
+            "type": "APPROVAL_REQUIRED",
+            "session_id": msg.session_id,
+            "payload": {
+                "step": {
+                    "id": step_id,
                     "action": "TYPE_FROM_VAULT",
                     "protocol_level": "CRITICAL",
-                    "description": "Authentication required — please approve",
+                    "description": "Authentication required — user approval needed",
                 },
-            }))
-            return
+                "reason": "Page requires authentication — approve to continue with vault credentials",
+            },
+        }))
+        return
 
-    # Success — mark as complete and dispatch next
-    if status == "success":
-        tracker.mark_success(step_id)
-
-    # Dispatch next step
-    # Reload the plan from the tracker context
+    # Generic error or no error_code — dispatch next step
     await _dispatch_next_step_from_tracker(ws, msg.session_id)
 
 
 async def _dispatch_next_step_from_tracker(ws: WebSocket, session_id: str):
-    """Dispatch the next step using the tracker state (without full plan reload)."""
+    """Dispatch the next step using the tracker state and cached plan."""
     tracker = get_tracker(session_id)
     next_step = tracker.get_next_executable()
 
@@ -344,35 +499,47 @@ async def _dispatch_next_step_from_tracker(ws: WebSocket, session_id: str):
             await ws.send_text(json.dumps({
                 "type": "TASK_COMPLETE",
                 "session_id": session_id,
-                "payload": {"status": "completed", "message": "All steps completed"},
+                "payload": {
+                    "summary": "All steps completed successfully",
+                    "steps_completed": len(tracker.get_completed_step_ids()),
+                    "total": tracker.get_summary()["total_steps"],
+                },
             }))
         elif tracker.is_plan_failed():
-            await _send_error(ws, "PLAN_FAILED", "All steps exhausted retries")
+            await _send_error(ws, "PLAN_FAILED", "All steps exhausted retries", session_id)
         return
 
     tracker.mark_running(next_step.step_id)
 
-    # For retrying steps, send a RETRY indication
-    if next_step.state == StepState.RETRYING:
+    # Look up full step detail from cached plan
+    plan = _plan_cache.get(session_id)
+    step_detail = None
+    if plan:
+        for s in plan.plan.steps:
+            if s.id == next_step.step_id:
+                step_detail = s
+                break
+
+    if step_detail:
         await ws.send_text(json.dumps({
             "type": "NEXT_STEP",
             "session_id": session_id,
             "payload": {
-                "step_id": next_step.step_id,
-                "action": "RETRY",
-                "description": f"Retrying step {next_step.step_id} (attempt {next_step.attempts})",
-                "retry_count": next_step.attempts,
+                "step": _step_to_extension_format(step_detail),
             },
         }))
+        logger.info("Dispatched step %d (%s)", next_step.step_id, step_detail.action.value)
     else:
-        # For fresh steps, send a basic dispatch (extension re-reads from PLAN)
+        # Fallback: send minimal step data
         await ws.send_text(json.dumps({
             "type": "NEXT_STEP",
             "session_id": session_id,
             "payload": {
-                "step_id": next_step.step_id,
-                "action": "EXECUTE",
-                "description": f"Execute step {next_step.step_id}",
+                "step": {
+                    "id": next_step.step_id,
+                    "action": "EXECUTE",
+                    "description": f"Step {next_step.step_id}",
+                },
             },
         }))
 
@@ -382,10 +549,10 @@ async def _dispatch_next_step_from_tracker(ws: WebSocket, session_id: str):
 # ---------------------------------------------------------------------------
 
 async def _handle_approval_response(ws: WebSocket, msg: WebSocketMessage):
-    """Handle user approval decision with full task tracker integration."""
+    """Handle user approval decision."""
     payload = msg.payload
     approved = payload.get("approved", False)
-    step_id = payload.get("step_id")
+    step_id = payload.get("step_id") or payload.get("actionId")
     logger.info("Approval for step %s: %s", step_id, "approved" if approved else "denied")
 
     tracker = get_tracker(msg.session_id)
@@ -397,23 +564,23 @@ async def _handle_approval_response(ws: WebSocket, msg: WebSocketMessage):
                 "type": "NEXT_STEP",
                 "session_id": msg.session_id,
                 "payload": {
-                    "step_id": step_id,
-                    "action": "EXECUTE",
-                    "status": "approved",
-                    "description": f"Step {step_id} approved — executing",
+                    "step": {
+                        "id": step_id,
+                        "action": "EXECUTE",
+                        "status": "approved",
+                    },
                 },
             }))
             logger.info("Step %d approved and dispatched", step_id)
         except ValueError as e:
-            await _send_error(ws, "INVALID_APPROVAL", str(e))
+            await _send_error(ws, "INVALID_APPROVAL", str(e), msg.session_id)
     else:
         tracker.deny_step(step_id)
         await ws.send_text(json.dumps({
             "type": "ERROR",
             "session_id": msg.session_id,
-            "payload": {"error_code": "APPROVAL_DENIED", "message": f"Step {step_id} denied by user"},
+            "payload": {"code": "APPROVAL_DENIED", "message": f"Step {step_id} denied by user"},
         }))
-        logger.info("Step %d denied — plan halted", step_id)
 
 
 # ---------------------------------------------------------------------------
@@ -425,13 +592,12 @@ async def _handle_session_restore(ws: WebSocket, msg: WebSocketMessage):
     from state.session_manager import get_session_manager
 
     payload = msg.payload
-    target_session_id = payload.get("target_session_id", msg.session_id)
+    target_session_id = payload.get("session_id", msg.session_id)
 
     manager = get_session_manager()
     session_data = manager.restore_session(target_session_id)
 
     if session_data:
-        # Initialize task tracker from restored session
         tracker = get_tracker(msg.session_id)
         if "plan_id" in session_data and "step_ids" in session_data:
             tracker.initialize_plan(session_data["plan_id"], session_data["step_ids"])
@@ -443,10 +609,8 @@ async def _handle_session_restore(ws: WebSocket, msg: WebSocketMessage):
                 "session_id": target_session_id,
                 "restored": True,
                 "session_data": session_data,
-                "message": "Session restored successfully",
             },
         }))
-        logger.info("Session %s restored for %s", target_session_id, msg.session_id)
     else:
         await ws.send_text(json.dumps({
             "type": "SESSION_RESTORED",
@@ -454,7 +618,6 @@ async def _handle_session_restore(ws: WebSocket, msg: WebSocketMessage):
             "payload": {
                 "session_id": target_session_id,
                 "restored": False,
-                "message": "Session not found",
             },
         }))
 
@@ -464,39 +627,32 @@ async def _handle_session_restore(ws: WebSocket, msg: WebSocketMessage):
 # ---------------------------------------------------------------------------
 
 async def _handle_pause_agent(ws: WebSocket, msg: WebSocketMessage):
-    """Pause agent action dispatch."""
     tracker = get_tracker(msg.session_id)
     tracker.pause()
     await ws.send_text(json.dumps({
         "type": "ACK",
         "session_id": msg.session_id,
-        "payload": {"status": "paused", "tracker": tracker.get_summary()},
+        "payload": {"status": "paused"},
     }))
 
 
 async def _handle_resume_agent(ws: WebSocket, msg: WebSocketMessage):
-    """Resume agent action dispatch."""
     tracker = get_tracker(msg.session_id)
     tracker.resume()
     await ws.send_text(json.dumps({
         "type": "ACK",
         "session_id": msg.session_id,
-        "payload": {"status": "resumed", "tracker": tracker.get_summary()},
+        "payload": {"status": "resumed"},
     }))
 
 
 async def _handle_stop_agent(ws: WebSocket, msg: WebSocketMessage):
-    """Stop agent and cancel pending steps."""
     tracker = get_tracker(msg.session_id)
     tracker.stop()
     await ws.send_text(json.dumps({
         "type": "TASK_COMPLETE",
         "session_id": msg.session_id,
-        "payload": {
-            "status": "stopped",
-            "message": "Agent stopped by user",
-            "tracker": tracker.get_summary(),
-        },
+        "payload": {"status": "stopped", "summary": "Agent stopped by user"},
     }))
 
 
@@ -504,10 +660,9 @@ async def _handle_stop_agent(ws: WebSocket, msg: WebSocketMessage):
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _send_error(ws: WebSocket, code: str, message: str):
-    """Send an ERROR envelope to the client."""
+async def _send_error(ws: WebSocket, code: str, message: str, session_id: str = "unknown"):
     await ws.send_text(json.dumps({
         "type": "ERROR",
-        "session_id": "unknown",
-        "payload": {"error_code": code, "message": message},
+        "session_id": session_id,
+        "payload": {"code": code, "message": message},
     }))

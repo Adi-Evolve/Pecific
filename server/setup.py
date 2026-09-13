@@ -17,8 +17,8 @@ from pathlib import Path
 # =============================================================================
 # CONFIG
 # =============================================================================
-LLM_MODEL = "Qwen/Qwen3-14B"
-NGROK_AUTH_TOKEN = ""  # Set your ngrok token here if using Kaggle (free at ngrok.com)
+LLM_MODEL = "Qwen/Qwen3-8B"
+NGROK_AUTH_TOKEN = ""  # Set here for Kaggle/local, or leave empty for Colab prompt
 SERVER_PORT = 8000
 
 
@@ -91,7 +91,7 @@ def verify_gpu():
         import torch
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(0)
-            vram = torch.cuda.get_device_properties(0).total_mem / 1e9
+            vram = torch.cuda.get_device_properties(0).total_memory / 1e9
             print(f"   GPU: {gpu_name}")
             print(f"   VRAM: {vram:.1f} GB")
             if vram < 14:
@@ -115,7 +115,9 @@ def setup_project():
 
     # Determine working directory
     if ENV == "colab":
-        base = Path("/content/PrivacyLens/server")
+        base = Path("/content/server")
+        if not base.exists():
+            base = Path("/content/PrivacyLens/server")
     elif ENV == "kaggle":
         base = Path("/kaggle/working/PrivacyLens/server")
     else:
@@ -127,6 +129,7 @@ def setup_project():
         "schemas/messages.py", "schemas/actions.py", "schemas/protocols.py",
         "core/planner.py", "core/protocol_engine.py", "core/vlm_client.py",
         "models/llm_loader.py", "api/routes.py", "api/websocket_handler.py",
+        "state/task_tracker.py", "state/session_manager.py", "state/memory_store.py",
     ]
 
     missing = []
@@ -155,13 +158,12 @@ def load_llm_model(project_dir):
 
     try:
         from models.llm_loader import load_llm
-        import asyncio
 
-        model, tokenizer = asyncio.run(load_llm(
+        model, tokenizer = load_llm(
             model_name=LLM_MODEL,
             device="cuda",
             load_in_4bit=True,
-        ))
+        )
         print("   LLM loaded successfully!")
         return True
     except Exception as e:
@@ -185,7 +187,7 @@ def start_server(project_dir):
             "main:app",
             host="0.0.0.0",
             port=SERVER_PORT,
-            log_level="warning",
+            log_level="info",
         )
 
     server_thread = threading.Thread(target=run, daemon=True)
@@ -215,6 +217,16 @@ def setup_ngrok():
     """Expose server via ngrok tunnel."""
     print("\n[6/6] Setting up ngrok tunnel...")
 
+    global NGROK_AUTH_TOKEN
+
+    # Prompt for token if not set (Colab interactive input)
+    if not NGROK_AUTH_TOKEN:
+        NGROK_AUTH_TOKEN = input("   Enter your ngrok auth token (get free at ngrok.com): ").strip()
+        if not NGROK_AUTH_TOKEN:
+            print("   No ngrok token provided. Skipping tunnel.")
+            print(f"   Use locally: ws://localhost:{SERVER_PORT}/ws/browser-agent")
+            return None
+
     try:
         from pyngrok import ngrok, conf
 
@@ -231,19 +243,19 @@ def setup_ngrok():
         print(f"   SERVER IS LIVE!")
         print(f"   {'='*60}")
         print(f"   Public URL:  {public_url}")
-        print(f"   WebSocket:   {ws_url}/ws")
+        print(f"   WebSocket:   {ws_url}/ws/browser-agent")
         print(f"   Health:      {public_url}/api/health")
         print(f"   API docs:    {public_url}/docs")
         print(f"   {'='*60}")
         print(f"\n   Copy this WebSocket URL into your extension config:")
-        print(f"   {ws_url}/ws")
+        print(f"   {ws_url}/ws/browser-agent")
 
         return public_url
 
     except Exception as e:
         print(f"   ngrok failed: {e}")
         print(f"\n   ALTERNATIVE: Use this URL directly (if on same network):")
-        print(f"   ws://localhost:{SERVER_PORT}/ws")
+        print(f"   ws://localhost:{SERVER_PORT}/ws/browser-agent")
         return None
 
 
@@ -295,6 +307,15 @@ def main():
     if not llm_loaded:
         print("\n  NOTE: LLM not loaded. Plan generation will fail.")
         print("  Make sure you're using a GPU runtime.")
+
+    # Keep the cell alive so the server keeps running
+    if server_ok:
+        print("\n  Server is running. Press STOP to shut down.")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            print("\n  Shutting down...")
 
 
 if __name__ == "__main__":
