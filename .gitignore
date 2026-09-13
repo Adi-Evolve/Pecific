@@ -36,8 +36,10 @@ pip-log.txt
 *.gguf
 *.safetensors
 *.bin
-models/
+/models/
 server/models/weights/
+!server/models/
+!server/models/*.py
 .cache/huggingface/
 
 # --- Server state / session data ---
