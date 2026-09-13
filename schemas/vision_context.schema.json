@@ -1,38 +1,25 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Vision Context",
-  "description": "Merged BlazeFace + MobileViT output from Dev 4's vision worker. Consumed by Dev 5 (planner) and Dev 6 (VLM server).",
+  "$id": "vision_context.schema.json",
   "type": "object",
-  "required": ["screen_type", "confidence"],
+  "required": ["screen_type", "confidence", "faces_detected", "pii_regions", "backend", "processing_ms"],
   "properties": {
     "screen_type": {
       "type": "string",
-      "enum": [
-        "search_results", "product_page", "login_page", "checkout",
-        "form_page", "dashboard", "home_page", "category_page",
-        "cart", "payment_page", "captcha", "unknown"
-      ],
-      "description": "MobileViT screen classification"
+      "enum": ["search_results", "product_page", "checkout", "login_page", "cart", "form", "unknown"]
     },
-    "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
-      "description": "Classification confidence"
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "confidence_basis": {
+      "type": "string",
+      "enum": ["mobilevit_image_class", "screen_class"]
     },
     "faces_detected": {
       "type": "array",
       "items": {
         "type": "object",
+        "required": ["bbox", "confidence"],
         "properties": {
-          "bbox": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4,
-            "description": "[x, y, width, height] — already blurred/redacted"
-          },
-          "confidence": { "type": "number" }
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
         }
       }
     },
@@ -40,17 +27,15 @@
       "type": "array",
       "items": {
         "type": "object",
+        "required": ["type", "bbox"],
         "properties": {
           "type": { "type": "string", "enum": ["face", "text_pii"] },
-          "bbox": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4
-          },
-          "label": { "type": ["string", "null"] }
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "label": { "type": "string" }
         }
       }
-    }
+    },
+    "backend": { "type": "string", "enum": ["webgpu", "wasm"] },
+    "processing_ms": { "type": "number" }
   }
 }

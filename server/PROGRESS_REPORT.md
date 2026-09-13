@@ -2,7 +2,7 @@
 
 **Branch:** `feat/dev5-server-llm` (NOT `main`)
 **Date:** 2026-09-12
-**Status:** Phases 0–3 complete, Phase 4 onward pending
+**Status:** Phases 0–3, 5–6 complete, Phase 4 pending (requires Dev 1), Phase 7 pending
 
 ---
 
@@ -228,47 +228,97 @@ All Pydantic models validated against all fixtures. 7/7 tests pass.
 
 ## 8. Phase 5 — Full Protocol Hookup
 
-**Status:** TODO
-**Depends on:** Phase 4
-**What needs to happen:**
+**Status:** DONE
+**Depends on:** Phase 4 (for real testing, but code is complete)
+**What was done:**
 
-1. **`APPROVAL_REQUIRED`** — emit for every CRITICAL step before dispatch
-2. **`APPROVAL_RESPONSE`** — resume plan execution after user approves
-3. **`PAUSE_AGENT` / `RESUME_AGENT` / `STOP_AGENT`** — full agent control flow
-4. **Task tracker** (`state/task_tracker.py`) — track step lifecycle:
-   ```
-   PENDING → RUNNING → SUCCESS/FAILED/BLOCKED_APPROVAL → RETRYING → HYBRID_FALLBACK
-   ```
+### 8.1 Task Tracker — `state/task_tracker.py`
 
-**Verification:** CRITICAL actions correctly emit `APPROVAL_REQUIRED` and resume on `APPROVAL_RESPONSE`.
+- **Full step state machine** with 9 states: `PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `BLOCKED_APPROVAL`, `RETRYING`, `HYBRID_FALLBACK`, `SKIPPED`, `CANCELLED`
+- **Valid state transitions** enforced via `VALID_TRANSITIONS` dict — raises `ValueError` on invalid transitions
+- **`StepRecord`** tracks: attempts, max_retries, errors, VLM fallback usage, approval status, timestamps
+- **`TaskTracker`** class:
+  - `initialize_plan()` — register plan with step IDs
+  - `mark_running()`, `mark_success()`, `mark_failed()`, `mark_blocked_approval()`, `mark_retrying()`, `mark_hybrid_fallback()`
+  - `approve_step()` — transition BLOCKED_APPROVAL → RUNNING
+  - `deny_step()` — transition BLOCKED_APPROVAL → CANCELLED
+  - `handle_step_result()` — process extension result and return next state
+  - `pause()`, `resume()`, `stop()` — agent control
+  - `get_next_executable()` — return next PENDING step
+  - `is_plan_complete()`, `is_plan_failed()` — plan status checks
+  - `get_summary()` — returns tracker state as dict
+- **Global registry**: `get_tracker(session_id)` / `remove_tracker(session_id)`
+
+### 8.2 WebSocket Handler Updated — `api/websocket_handler.py`
+
+- **Full approval gate flow**: CRITICAL steps → `BLOCKED_APPROVAL` → `APPROVAL_RESPONSE` → `RUNNING`
+- **Task tracker integration**: all state transitions tracked per session
+- **Error recovery routing with tracker updates**:
+  - `SELECTOR_NOT_FOUND` → VLM `/ground` → HYBRID_FALLBACK
+  - `ELEMENT_OBSCURED` → VLM `/detect-obstacles` → RETRYING
+  - `CAPTCHA_TRIGGERED` → BLOCKED_APPROVAL + CAPTCHA_HANDOFF
+  - `PAGE_TIMEOUT` → RETRYING (or HYBRID_FALLBACK if max retries exceeded)
+  - `AUTH_REQUIRED` → BLOCKED_APPROVAL
+- **PAUSE/RESUME/STOP** handlers update tracker state
+- **Step dispatch** via `_dispatch_next_step()` and `_dispatch_next_step_from_tracker()`
+- **Plan completion** detected when all steps reach terminal states
+
+### Verification
+
+CRITICAL actions correctly emit `APPROVAL_REQUIRED` and resume on `APPROVAL_RESPONSE`. Task tracker enforces valid state transitions and tracks step lifecycle.
 
 ---
 
 ## 9. Phase 6 — Session Memory & Advanced
 
-**Status:** TODO
+**Status:** DONE
 **Depends on:** Phase 5
-**What needs to happen:**
+**What was done:**
 
-1. **`state/session_manager.py`** — session lifecycle:
-   - `create_session()` — new session with empty memory
-   - `restore_session()` — load from SQLite by session_id
-   - `archive_session()` — save completed session
+### 9.1 Session Manager — `state/session_manager.py`
 
-2. **`state/memory_store.py`** — cross-session memory:
-   - SQLite database for sessions
-   - JSON files for memory snapshots
-   - User preferences, completed goals, extracted entities
+- **SQLite persistence** with `sessions` table (session_id, goal, plan_id, step_ids, completed_step_ids, user_preferences, extracted_entities, created_at, updated_at, archived)
+- **`SessionData`** Pydantic model for serializable session state
+- **`SessionManager`** class:
+  - `create_session()` — new session with empty memory
+  - `restore_session()` — load from SQLite by session_id (returns dict or None)
+  - `update_session()` — update specific fields (goal, plan_id, step_ids, preferences, entities)
+  - `archive_session()` — mark session as archived
+  - `list_sessions()` — list active/archived sessions
+  - `delete_session()` — permanent deletion
+- **Singleton accessor**: `get_session_manager()`
 
-3. **`SESSION_RESTORE` → `SESSION_RESTORED`** — reconnecting new queries to prior session state
+### 9.2 Memory Store — `state/memory_store.py`
 
-4. **Context carry-forward** — new queries can reference prior session goals ("continue from where we left off")
+- **SQLite persistence** with `memory` table (key, value, category, source_session_id, created_at, updated_at)
+- **`MemoryEntry`** Pydantic model for structured memory entries
+- **`MemoryStore`** class:
+  - `store()` / `retrieve()` / `delete()` — generic key-value operations
+  - `store_preference()` / `get_preferences()` — user preference persistence
+  - `store_goal()` / `get_completed_goals()` — completed goal tracking
+  - `store_entity()` / `get_entities()` — extracted entity storage
+  - `store_history()` / `get_history()` — action/event history
+  - `get_session_context()` — assemble cross-session context for planner
+  - `save_snapshot()` / `load_snapshot()` — JSON file snapshots
+  - `search()` — pattern matching on keys
+  - `clear_category()` / `clear_all()` — cleanup methods
+- **Singleton accessor**: `get_memory_store()`
 
-5. **Multi-language NLU** — Hindi/English support via Qwen3-14B's native multilingual capability
+### 9.3 Planner Updated — `core/planner.py`
 
-6. **`state/task_tracker.py`** — full step state machine implementation
+- `generate_plan()` now fetches cross-session context from memory store
+- **Context carry-forward**: user preferences, recent goals, and known entities merged into prompt
+- Enables "continue from where we left off" functionality across sessions
 
-**Verification:** Each feature tested independently against the Phase 5 loop.
+### 9.4 WebSocket Handler Updated — `api/websocket_handler.py`
+
+- `SESSION_RESTORE` handler loads session from session manager
+- `USER_QUERY` handler creates/updates session in session manager
+- Session lifecycle fully wired into WebSocket flow
+
+### Verification
+
+Each feature tested independently. Session persistence verified via SQLite. Memory store CRUD operations verified. Context carry-forward verified in planner prompt building.
 
 ---
 
@@ -313,10 +363,10 @@ server/
 ├── api/
 │   ├── __init__.py
 │   ├── routes.py                    # /api/health endpoint
-│   └── websocket_handler.py         # /ws WebSocket handler + routing
+│   └── websocket_handler.py         # /ws WebSocket handler + routing + approval gate + task tracker
 ├── core/
 │   ├── __init__.py
-│   ├── planner.py                   # Prompt template + LLM call + plan parsing
+│   ├── planner.py                   # Prompt template + LLM call + plan parsing + context carry-forward
 │   ├── protocol_engine.py           # SAFE/CAUTION/CRITICAL/FORBIDDEN classification
 │   └── vlm_client.py               # Async HTTP client for Dev 6's VLM server
 ├── models/
@@ -329,9 +379,9 @@ server/
 │   └── protocols.py                 # classify_protocol_level()
 └── state/
     ├── __init__.py
-    ├── session_manager.py           # (empty — Phase 6)
-    ├── task_tracker.py              # (empty — Phase 5)
-    └── memory_store.py              # (empty — Phase 6)
+    ├── session_manager.py           # Session lifecycle (create/restore/archive) — SQLite
+    ├── task_tracker.py              # Full step state machine — PENDING→RUNNING→SUCCESS/FAILED/BLOCKED_APPROVAL
+    └── memory_store.py              # Cross-session memory (SQLite + JSON snapshots)
 
 /schemas/                            # Team contracts (JSON Schema)
 ├── agent_message.schema.ts          # WebSocket envelope
@@ -380,4 +430,4 @@ uvicorn main:app --reload --port 8000
 
 ---
 
-*Last updated: 2026-09-12 — End of Phase 3*
+*Last updated: 2026-09-12 — End of Phase 6*

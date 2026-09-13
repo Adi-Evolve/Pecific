@@ -1,0 +1,199 @@
+{
+  "description": "Test strings for regex PII scanner. Each entry has the input string, context, and expected matches.",
+  "test_cases": [
+    {
+      "id": "email_personal",
+      "input": "Contact me at aditya.sharma@gmail.com for queries",
+      "context": { "parentTag": "SPAN", "parentClass": "profile-email" },
+      "expected": [
+        { "type": "EMAIL", "value": "aditya.sharma@gmail.com" }
+      ]
+    },
+    {
+      "id": "email_system_noreply",
+      "input": "From: noreply@amazon.in",
+      "context": { "parentTag": "SPAN" },
+      "expected": [],
+      "note": "noreply@ emails should be skipped"
+    },
+    {
+      "id": "email_support_in_footer",
+      "input": "support@example.com",
+      "context": { "parentTag": "FOOTER", "parentClass": "footer-contact" },
+      "expected": [],
+      "note": "Support email in footer should be skipped"
+    },
+    {
+      "id": "phone_indian_personal",
+      "input": "Call me on +91 98765 43210",
+      "context": { "parentTag": "SPAN", "parentClass": "user-phone" },
+      "expected": [
+        { "type": "PHONE", "value": "+91 98765 43210" }
+      ]
+    },
+    {
+      "id": "phone_tollfree",
+      "input": "Customer Care: 1800-123-4567",
+      "context": { "parentTag": "FOOTER", "nearbyLabels": "Customer Care" },
+      "expected": [],
+      "note": "Toll-free in footer with customer care label should be skipped"
+    },
+    {
+      "id": "aadhaar_valid",
+      "input": "Aadhaar: 2345 6789 0123",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "AADHAAR", "value": "2345 6789 0123" }
+      ]
+    },
+    {
+      "id": "aadhaar_invalid_starts_with_0",
+      "input": "ID: 0123 4567 8901",
+      "context": {},
+      "expected": [],
+      "note": "Aadhaar cannot start with 0 or 1"
+    },
+    {
+      "id": "aadhaar_all_same_digits",
+      "input": "1111 1111 1111",
+      "context": {},
+      "expected": [],
+      "note": "All same digits is not a real Aadhaar"
+    },
+    {
+      "id": "pan_valid",
+      "input": "My PAN is ABCPD1234E",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "PAN", "value": "ABCPD1234E" }
+      ]
+    },
+    {
+      "id": "pan_invalid_category",
+      "input": "ABCXD1234E",
+      "context": {},
+      "expected": [],
+      "note": "X is not a valid PAN category character"
+    },
+    {
+      "id": "credit_card_luhn_valid",
+      "input": "Card: 4532 1234 5678 9012",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "CARD", "value": "4532 1234 5678 9012" }
+      ],
+      "note": "This is a Luhn-valid Visa number"
+    },
+    {
+      "id": "credit_card_luhn_invalid",
+      "input": "Number: 1234 5678 9012 3456",
+      "context": {},
+      "expected": [],
+      "note": "Random 16 digits failing Luhn should not match"
+    },
+    {
+      "id": "upi_id_valid",
+      "input": "Pay via aditya@ybl",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "UPI", "value": "aditya@ybl" }
+      ]
+    },
+    {
+      "id": "upi_not_email",
+      "input": "UPI: user@paytm or email: user@gmail.com",
+      "context": { "parentTag": "SPAN", "parentClass": "payment-info" },
+      "expected": [
+        { "type": "UPI", "value": "user@paytm" },
+        { "type": "EMAIL", "value": "user@gmail.com" }
+      ],
+      "note": "UPI and email should be distinguished correctly"
+    },
+    {
+      "id": "dob_with_label",
+      "input": "15/03/1998",
+      "context": { "nearbyLabels": "Date of Birth" },
+      "expected": [
+        { "type": "DOB", "value": "15/03/1998" }
+      ]
+    },
+    {
+      "id": "date_without_dob_label",
+      "input": "Order placed on 15/03/2024",
+      "context": { "nearbyLabels": "Order Date" },
+      "expected": [],
+      "note": "Dates without DOB-related labels should not be matched"
+    },
+    {
+      "id": "ip_address_personal",
+      "input": "Your IP: 203.45.67.89",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "IP", "value": "203.45.67.89" }
+      ]
+    },
+    {
+      "id": "ip_address_localhost",
+      "input": "Server: 127.0.0.1",
+      "context": {},
+      "expected": [],
+      "note": "Localhost IP should be skipped"
+    },
+    {
+      "id": "ifsc_valid",
+      "input": "IFSC: HDFC0001234",
+      "context": { "parentTag": "SPAN" },
+      "expected": [
+        { "type": "IFSC", "value": "HDFC0001234" }
+      ]
+    },
+    {
+      "id": "passport_with_label",
+      "input": "J1234567",
+      "context": { "nearbyLabels": "Passport Number" },
+      "expected": [
+        { "type": "PASSPORT", "value": "J1234567" }
+      ]
+    },
+    {
+      "id": "passport_without_label",
+      "input": "Order ID: A1234567",
+      "context": { "nearbyLabels": "Order" },
+      "expected": [],
+      "note": "Passport-like pattern without passport label should not match"
+    },
+    {
+      "id": "password_field",
+      "input": "secretpassword123",
+      "context": { "inputType": "password" },
+      "expected": [
+        { "type": "PASSWORD_FIELD", "value": "[hidden]" }
+      ]
+    },
+    {
+      "id": "mixed_pii_string",
+      "input": "Name: Aditya Sharma, Email: aditya@gmail.com, Phone: +91 98765 43210, PAN: ABCPD1234E",
+      "context": { "parentTag": "DIV", "parentClass": "user-profile" },
+      "expected": [
+        { "type": "EMAIL", "value": "aditya@gmail.com" },
+        { "type": "PHONE", "value": "+91 98765 43210" },
+        { "type": "PAN", "value": "ABCPD1234E" }
+      ],
+      "note": "Should catch email, phone, PAN. Name detection is done by NER, not regex."
+    },
+    {
+      "id": "product_info_no_pii",
+      "input": "boAt Bassheads 100 — ₹449 | 4.1 stars | Free Delivery",
+      "context": { "parentTag": "DIV", "parentClass": "product-card" },
+      "expected": [],
+      "note": "Product info should not trigger any PII matches"
+    },
+    {
+      "id": "navigation_no_pii",
+      "input": "Home | Electronics | Headphones | Filters | Sort by Price",
+      "context": { "parentTag": "NAV", "parentClass": "breadcrumb" },
+      "expected": [],
+      "note": "Navigation text should not trigger any PII matches"
+    }
+  ]
+}

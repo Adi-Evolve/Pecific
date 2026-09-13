@@ -9,6 +9,8 @@ from schemas.actions import ActionPlan, PlanStep
 from models.llm_loader import get_llm
 from core.vlm_client import ground_element, detect_obstacles, verify_state
 from config import get_settings
+from state.memory_store import get_memory_store
+from state.session_manager import get_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -149,14 +151,23 @@ async def generate_plan(
 ) -> ActionPlan:
     """Generate a structured execution plan from a user goal.
 
-    1. Build prompt from context
-    2. Call Qwen3-14B
-    3. Parse and validate output against ActionPlan schema
-    4. If plan contains SCREENSHOT steps, call VLM and re-plan
-    5. On failure: retry once with corrective prompt
+    1. Fetch cross-session context from memory store
+    2. Build prompt from context
+    3. Call Qwen3-14B
+    4. Parse and validate output against ActionPlan schema
+    5. If plan contains SCREENSHOT steps, call VLM and re-plan
+    6. On failure: retry once with corrective prompt
     """
     settings = get_settings()
     model, tokenizer = get_llm()
+
+    # Fetch cross-session context for carry-forward
+    memory = get_memory_store()
+    cross_session_context = memory.get_session_context(session_id)
+
+    # Merge with explicit session_memory if provided
+    if session_memory:
+        cross_session_context.update(session_memory)
 
     # Build VLM context if screenshot is available
     vlm_context = None
@@ -169,7 +180,7 @@ async def generate_plan(
         sanitized_dom=sanitized_dom,
         vault_manifest=vault_manifest,
         completed_steps=completed_steps,
-        session_memory=session_memory,
+        session_memory=cross_session_context,
         vlm_context=vlm_context,
     )
 

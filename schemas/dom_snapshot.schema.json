@@ -1,60 +1,92 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "DOM Snapshot",
-  "description": "Sanitized DOM snapshot extracted by Dev 2's content script. Consumed by Dev 5 (LLM Planner).",
+  "$id": "dom_snapshot.schema.json",
+  "title": "DOMSnapshot",
+  "description": "Sanitized DOM accessibility-tree snapshot sent from the extension (Dev2 extractor, post Dev3 privacy pass) to the server planner (Dev5).",
   "type": "object",
   "required": ["url", "title", "viewport", "elements"],
   "properties": {
-    "url": { "type": "string", "description": "Current page URL" },
-    "title": { "type": "string", "description": "Page title" },
+    "url": {
+      "type": "string",
+      "description": "Current page URL."
+    },
+    "title": {
+      "type": "string",
+      "description": "Current page title."
+    },
     "viewport": {
       "type": "object",
       "required": ["width", "height"],
       "properties": {
         "width": { "type": "integer" },
-        "height": { "type": "integer" },
-        "scroll_x": { "type": "integer", "default": 0 },
-        "scroll_y": { "type": "integer", "default": 0 }
+        "height": { "type": "integer" }
       }
     },
     "elements": {
       "type": "array",
+      "description": "Tagged, interactive elements from the accessibility tree.",
       "items": {
         "type": "object",
-        "required": ["id", "tag", "selector", "interactive"],
+        "required": ["id", "tag", "role", "rect"],
         "properties": {
-          "id": { "type": "string", "description": "Unique element ID (e.g. e_search)" },
-          "tag": { "type": "string", "description": "HTML tag name" },
-          "selector": { "type": "string", "description": "CSS selector" },
-          "type": { "type": ["string", "null"], "description": "Input type (text, submit, etc.)" },
-          "interactive": { "type": "boolean", "description": "Whether element is clickable/interactive" },
-          "role": { "type": ["string", "null"], "description": "ARIA role" },
-          "text": { "type": ["string", "null"], "description": "Redacted text content ([TOKEN] placeholders)" },
-          "placeholder": { "type": ["string", "null"] },
-          "value": { "type": ["string", "null"], "description": "Redacted value ([TOKEN] placeholders)" },
-          "coordinates": {
+          "id": {
+            "type": "integer",
+            "description": "Stable numeric tag assigned by the extractor; referenced by action.schema.json to target this element."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Uppercase HTML tag name, e.g. INPUT, BUTTON, A."
+          },
+          "type": {
+            "type": "string",
+            "description": "Input type attribute, if applicable (e.g. search, password, submit)."
+          },
+          "role": {
+            "type": "string",
+            "description": "ARIA role or inferred role, e.g. searchbox, button, link."
+          },
+          "text": {
+            "type": "string",
+            "description": "Visible text content, if any (post-sanitization by Dev3's privacy worker)."
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "rect": {
             "type": "array",
+            "description": "[x, y, width, height] bounding box in viewport coordinates.",
             "items": { "type": "number" },
             "minItems": 4,
-            "maxItems": 4,
-            "description": "[x, y, width, height]"
+            "maxItems": 4
           }
         }
       }
     },
     "forms": {
       "type": "array",
+      "description": "Detected forms on the page, with vault availability per field (no actual values).",
       "items": {
         "type": "object",
+        "required": ["id", "fields"],
         "properties": {
           "id": { "type": "string" },
-          "action": { "type": "string" },
           "fields": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "vault_available": {
+            "type": "object",
+            "additionalProperties": { "type": "boolean" }
           }
         }
       }
+    },
+    "context_sufficient": {
+      "type": "boolean",
+      "description": "Set by the extractor: whether the DOM alone gives enough context for the current screen, or whether the vision worker should also be invoked. Optional in Phase 1; required once the vision-gating flow lands."
     }
   }
 }

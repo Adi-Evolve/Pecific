@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pecific</title>
+  <style>
+    :root {
+      --bg-main: #FFFFFF;
+      --bg-surface: #F9FAFB;
+      --text-main: #111827;
+      --text-muted: #6B7280;
+      --border: #E5E7EB;
+      --accent: #000000;
+      --accent-text: #FFFFFF;
+      --accent-hover: #374151;
+      --success: #10B981;
+    }
+    
+    body.dark-mode {
+      --bg-main: #0F1115;
+      --bg-surface: #1A1D24;
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --border: #374151;
+      --accent: #FFFFFF;
+      --accent-text: #000000;
+      --accent-hover: #D1D5DB;
+      --success: #10B981;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      width: 400px;
+      min-height: 480px;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      padding: 20px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 24px;
+      height: 24px;
+      background: var(--text-main);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--bg-main);
+    }
+
+    .logo-text h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background-color: transparent;
+      border: 1px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: background-color 0.15s ease;
+    }
+    .icon-btn:hover {
+      background-color: var(--bg-surface);
+      color: var(--text-main);
+    }
+
+    /* Views */
+    #view-idle { display: block; }
+    #view-running { display: none; }
+
+    /* Idle State */
+    .prompt-container {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background-color: var(--bg-main);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .prompt-container:focus-within {
+      border-color: var(--text-muted);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+
+    textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      height: 80px;
+      padding: 14px;
+      outline: none;
+    }
+    textarea::placeholder {
+      color: #9CA3AF;
+    }
+
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px 12px 12px;
+    }
+
+    .info-text {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: var(--accent-text);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    /* Running State */
+    .status-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .status-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* Simple pulsing dot for active status */
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--success);
+      border-radius: 50%;
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+      70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    .status-query {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* Progress Bar */
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background-color: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      width: 15%;
+      height: 100%;
+      background-color: var(--text-main);
+      border-radius: 2px;
+    }
+
+    /* Task Timeline */
+    .timeline {
+      margin-left: 8px;
+      border-left: 2px solid var(--border);
+      padding-left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .task {
+      position: relative;
+    }
+
+    .task::before {
+      content: '';
+      position: absolute;
+      left: -23px; /* Center on border */
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--bg-main);
+      border: 2px solid var(--border);
+    }
+
+    .task.active::before {
+      border-color: var(--accent);
+      background-color: var(--accent);
+    }
+    .task.completed::before {
+      border-color: var(--text-muted);
+      background-color: var(--text-muted);
+    }
+
+    .task-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+    .task:not(.active):not(.completed) .task-title {
+      color: var(--text-muted);
+    }
+
+    .task-detail {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-secondary {
+      width: 100%;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .btn-secondary:hover {
+      background-color: var(--bg-surface);
+    }
+
+    /* Privacy Status Badge */
+    .privacy-status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .privacy-status-badge:hover {
+      border-color: var(--text-muted);
+    }
+    .privacy-status-badge .badge-text {
+      flex: 1;
+    }
+    .privacy-status-badge .badge-link {
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: underline;
+      color: var(--text-muted);
+    }
+
+    /* Modal: Privacy Vault Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .modal-card {
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-height: 94vh;
+      overflow-y: auto;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .modal-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-title-row h2 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .modal-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .vault-banner {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .banner-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #10B981;
+      margin-bottom: 3px;
+    }
+    .banner-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .metric-card.metric-spii {
+      border-left: 3px solid #EF4444;
+    }
+    .metric-card.metric-pii {
+      border-left: 3px solid #3B82F6;
+    }
+    .metric-card.metric-ctx {
+      border-left: 3px solid #F59E0B;
+    }
+    .metric-card.metric-leaked {
+      border-left: 3px solid #10B981;
+    }
+    .metric-num {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .metric-desc {
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .token-list-container {
+      max-height: 120px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--bg-surface);
+      margin-bottom: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .token-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-main);
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .token-badge {
+      font-family: monospace;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .token-cat {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .token-cat.SPII { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+    .token-cat.PII { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+    .token-cat.CONTEXTUAL { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+    .token-empty {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 12px 0;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-actions button {
+      flex: 1;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
+      </div>
+      <div class="logo-text">
+        <h1>Pecific</h1>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- Theme Toggle -->
+      <button class="icon-btn" id="btn-theme" title="Toggle Theme">
+        <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+      <!-- Settings -->
+      <button class="icon-btn" id="btn-settings" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
+      <!-- Lock (Privacy) -->
+      <button class="icon-btn" id="btn-lock" title="Privacy Vault">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- STATE: IDLE -->
+  <div id="view-idle">
+    <div class="prompt-container">
+      <textarea id="prompt-input" placeholder="What should the agent do?" spellcheck="false">search for plastic gloves on flipkart under 200 rupees</textarea>
+      <div class="action-row">
+        <div class="info-text">Automates web tasks securely.</div>
+        <button class="btn-primary" id="btn-run">Run</button>
+      </div>
+    </div>
+
+    <!-- Live Zero-Egress Status Badge -->
+    <div class="privacy-status-badge" id="badge-privacy-idle" role="button" tabindex="0" aria-label="Inspect Zero-Egress Privacy Vault">
+      <span class="shield-icon">🛡️</span>
+      <span class="badge-text"><strong>Zero-Egress Guard Active</strong> • <span id="idle-masked-count">0</span> PII Masked</span>
+      <span class="badge-link">View Vault</span>
+    </div>
+  </div>
+
+  <!-- STATE: RUNNING -->
+  <div id="view-running">
+    
+    <div class="status-card">
+      <div class="status-title">
+        <span class="status-dot"></span>
+        Agent is running
+      </div>
+      <div class="status-query" id="display-query">search for plastic gloves on flipkart under 200 rupees</div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Timeline of tasks -->
+    <div class="timeline">
+      <div class="task active">
+        <div class="task-title">Navigate to Flipkart</div>
+        <div class="task-detail">Waiting for page to load...</div>
+      </div>
+      <div class="task">
+        <div class="task-title">Search for items</div>
+        <div class="task-detail">Pending</div>
+      </div>
+      <div class="task">
+        <div class="task-title">Extract key information</div>
+        <div class="task-detail">Pending</div>
+      </div>
+    </div>
+
+    <!-- Live Running Privacy Badge -->
+    <div class="privacy-status-badge" id="badge-privacy-running" role="button" tabindex="0" aria-label="Inspect Zero-Egress Privacy Vault" style="margin-bottom: 16px;">
+      <span class="shield-icon">🛡️</span>
+      <span class="badge-text"><strong>Active Shield</strong> • <span id="running-masked-count">0</span> Tokens in Vault</span>
+      <span class="badge-link">Inspect</span>
+    </div>
+
+    <button class="btn-secondary" id="btn-stop">Stop</button>
+  </div>
+
+  <!-- Modal: Privacy Vault & Redaction Telemetry Dashboard -->
+  <div id="modal-privacy-vault" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span style="font-size: 16px;">🛡️</span>
+          <h2>Zero-Egress Privacy Vault</h2>
+        </div>
+        <button class="icon-btn" id="btn-close-vault" title="Close">✕</button>
+      </div>
+      <div class="modal-sub">DPDP Act 2023 Compliant • On-Device Isolation</div>
+
+      <div class="vault-banner">
+        <div class="banner-badge">
+          <span class="status-dot"></span>
+          <span>Zero Plaintext Egress Verified</span>
+        </div>
+        <div class="banner-sub">Client credentials and SPII are substituted with tokens before reaching server LLM.</div>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="metric-card metric-spii">
+          <div class="metric-num" id="stat-spii-count">0</div>
+          <div class="metric-label">SPII Masked</div>
+          <div class="metric-desc">Aadhaar, PAN, DL, Passwords</div>
+        </div>
+        <div class="metric-card metric-pii">
+          <div class="metric-num" id="stat-pii-count">0</div>
+          <div class="metric-label">PII Masked</div>
+          <div class="metric-desc">Email, Phone, Name, UPI</div>
+        </div>
+        <div class="metric-card metric-ctx">
+          <div class="metric-num" id="stat-ctx-count">0</div>
+          <div class="metric-label">Contextual</div>
+          <div class="metric-desc">Address, IFSC, DOB, IP</div>
+        </div>
+        <div class="metric-card metric-leaked">
+          <div class="metric-num" id="stat-leak-count">0</div>
+          <div class="metric-label">Secrets Leaked</div>
+          <div class="metric-desc">Verified 0 Raw Egress</div>
+        </div>
+      </div>
+
+      <div class="section-title">Active Token Manifest</div>
+      <div class="token-list-container" id="token-manifest-list">
+        <div class="token-empty">No active tokens yet. Run a query or scan a page to populate the vault.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btn-reset-vault">Reset Vault</button>
+        <button class="btn-primary" id="btn-done-vault">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

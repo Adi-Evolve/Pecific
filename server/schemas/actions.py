@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Enums
+# Enums — matching /schemas/action.schema.json
 # ---------------------------------------------------------------------------
 
 class ActionType(str, Enum):
@@ -15,6 +15,8 @@ class ActionType(str, Enum):
     CLICK = "CLICK"
     TYPE = "TYPE"
     TYPE_FROM_VAULT = "TYPE_FROM_VAULT"
+    PRESS_KEY = "PRESS_KEY"
+    HOVER = "HOVER"
     SCROLL = "SCROLL"
     SELECT = "SELECT"
     WAIT = "WAIT"
@@ -25,7 +27,6 @@ class ActionType(str, Enum):
     CLOSE_TAB = "CLOSE_TAB"
     DISMISS_POPUP = "DISMISS_POPUP"
     CAPTCHA_HANDOFF = "CAPTCHA_HANDOFF"
-    PRESS_KEY = "PRESS_KEY"
     REPORT_RESULT = "REPORT_RESULT"
 
 
@@ -36,54 +37,54 @@ class ExecutionMode(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Nested models
+# Nested models — matching /schemas/action.schema.json
 # ---------------------------------------------------------------------------
 
 class StepTarget(BaseModel):
     selector: Optional[str] = None
-    element_id: Optional[str] = None
-    coordinates: Optional[list[float]] = None
     url: Optional[str] = None
+    coordinates: Optional[list[float]] = None
+    text: Optional[str] = None
+    tab_id: Optional[int] = None
     tab_purpose: Optional[str] = None
 
 
 class VerifyCondition(BaseModel):
-    method: str = Field(..., description="DOM_CHECK | URL_CHECK | SCREENSHOT | VALUE_MATCH")
+    method: str = Field(..., description="DOM_CHECK | URL_CHECK | SCREENSHOT")
     condition: str
 
 
 class Fallback(BaseModel):
-    action: Optional[str] = None
-    reason: Optional[str] = None
+    action: str
+    reason: str
 
 
 class PlanStep(BaseModel):
-    id: int = Field(..., ge=1)
+    """Single step in an execution plan — matches action.schema.json ActionStep."""
+    id: int = Field(..., ge=1, description="Sequential step index (1-based)")
     action: ActionType
     target: Optional[StepTarget] = None
     value: Optional[str] = None
-    vault_key: Optional[str] = None
     key: Optional[str] = None
-    extraction_type: Optional[str] = None
-    selectors: Optional[dict[str, Any]] = None
+    vault_key: Optional[str] = None
     execution_mode: ExecutionMode = ExecutionMode.DOM
-    protocol_level: str = Field(..., description="SAFE | CAUTION | CRITICAL | FORBIDDEN")
-    description: str
-    verify: VerifyCondition
+    protocol_level: str = Field(default="SAFE", description="SAFE | CAUTION | CRITICAL | FORBIDDEN")
+    description: str = ""
+    verify: Optional[VerifyCondition] = None
     fallback: Optional[Fallback] = None
     timeout_ms: int = 5000
+    duration_ms: Optional[int] = None
 
 
 class Plan(BaseModel):
     goal: str
-    chain_of_thought: str
+    chain_of_thought: str = ""
     total_steps: int = Field(..., ge=1)
     steps: list[PlanStep]
 
 
 class ActionPlan(BaseModel):
     """Full action plan response from the LLM server."""
-
     session_id: str
     goal: str
     plan: Plan

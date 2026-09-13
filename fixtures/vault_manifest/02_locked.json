@@ -1,0 +1,10 @@
+{
+  "fields": {
+    "email": false,
+    "password": false,
+    "phone": false,
+    "name": false,
+    "address": false
+  },
+  "locked": true
+}

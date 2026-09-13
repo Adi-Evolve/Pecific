@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pecific Agent Sidepanel</title>
+  <style>
+    body {
+      width: 100%;
+      height: 100vh;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #111827;
+      color: #F9FAFB;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    /* Privacy Guard Widget */
+    .privacy-guard-card {
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .guard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .guard-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #10B981;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .guard-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      text-align: center;
+    }
+    .guard-stat-item {
+      background: #111827;
+      border-radius: 6px;
+      padding: 6px 4px;
+    }
+    .guard-stat-val {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #F9FAFB;
+    }
+    .guard-stat-lbl {
+      font-size: 0.65rem;
+      color: #9CA3AF;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .panel-content {
+      padding: 12px;
+      background: #1F2937;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #374151;
+    }
+    .timeline-item {
+      padding: 8px;
+      background: #111827;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid #10B981;
+    }
+    .timeline-title {
+      font-weight: 600;
+      font-size: 0.8rem;
+      margin-bottom: 2px;
+    }
+    .timeline-detail {
+      font-size: 0.75rem;
+      color: #9CA3AF;
+    }
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(2px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .modal-card {
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      width: 100%;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .modal-header h2 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      margin-top: 0;
+    }
+    .modal-body {
+      margin-bottom: 16px;
+    }
+    .modal-body p {
+      font-size: 0.85rem;
+      color: #D1D5DB;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .risk-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .risk-safe { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+    .risk-caution { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+    .risk-critical { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+    
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-primary {
+      flex: 1;
+      background: #10B981;
+      color: #111827;
+      border: none;
+      padding: 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      flex: 1;
+      background: transparent;
+      color: #F9FAFB;
+      border: 1px solid #374151;
+      padding: 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #059669; }
+    .btn-secondary:hover { background: #374151; }
+  </style>
+</head>
+<body>
+  <div class="panel-header">
+    <h1>Agent Timeline</h1>
+    <span style="font-size: 0.75rem; color: #10B981;">● Online</span>
+  </div>
+
+  <!-- Real-time Privacy Guard Status Card -->
+  <div class="privacy-guard-card">
+    <div class="guard-header">
+      <div class="guard-title">
+        <span>🛡️</span> Zero-Egress Privacy Guard
+      </div>
+      <span style="font-size: 0.7rem; color: #10B981; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;">ACTIVE</span>
+    </div>
+    <div class="guard-stats-row">
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-spii-count">0</div>
+        <div class="guard-stat-lbl">SPII Masked</div>
+      </div>
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-pii-count">0</div>
+        <div class="guard-stat-lbl">PII Masked</div>
+      </div>
+      <div class="guard-stat-item">
+        <div class="guard-stat-val" id="side-leak-count" style="color: #10B981;">0</div>
+        <div class="guard-stat-lbl">Egress Leaks</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-content" id="timeline">
+    <div class="timeline-item">
+      <div class="timeline-title">Privacy Engine Initialized</div>
+      <div class="timeline-detail">On-device vault active. Indian SPII protected.</div>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content: space-between; align-items:center;">
+     <div style="flex:1;">
+        <div style="font-size:0.75rem; color:#9CA3AF; margin-bottom:4px;" id="eta-label">ETA: Waiting for task...</div>
+        <div style="width:100%; height:4px; background:#374151; border-radius:2px;">
+           <div id="progress-fill" style="width:0%; height:100%; background:#10B981; border-radius:2px; transition: width 0.3s;"></div>
+        </div>
+     </div>
+     <button id="btn-undo" class="btn-secondary" style="margin-left:12px; padding:6px 12px; font-size:0.75rem; flex:initial; width:auto;">Undo Step</button>
+  </div>
+
+  <!-- Approval Modal (Phase 5) -->
+  <div id="modal-approval" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="approval-title">Approval Required</h2>
+      </div>
+      <div class="modal-body">
+        <div id="approval-risk-badge" class="risk-badge">RISK LEVEL</div>
+        <p id="approval-description">Description goes here...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-deny" class="btn-secondary">Deny</button>
+        <button id="btn-approve" class="btn-primary">Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function updateSidepanelTelemetry(telemetry) {
+      if (!telemetry) return;
+      const elSpii = document.getElementById('side-spii-count');
+      const elPii = document.getElementById('side-pii-count');
+      const elLeak = document.getElementById('side-leak-count');
+      if (elSpii) elSpii.textContent = telemetry.spii_count || 0;
+      if (elPii) elPii.textContent = telemetry.pii_count || 0;
+      if (elLeak) {
+        const leaks = telemetry.leaked_count !== undefined ? telemetry.leaked_count : 0;
+        elLeak.textContent = leaks;
+        elLeak.style.color = (leaks > 0 || telemetry.zero_egress_verified === false) ? '#EF4444' : '#10B981';
+      }
+    }
+
+    // Fetch initial telemetry
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_PRIVACY_TELEMETRY' }, (res) => {
+        if (res && res.telemetry) updateSidepanelTelemetry(res.telemetry);
+      });
+    } catch (e) {}
+
+    let currentApprovalActionId = null;
+
+    // Listen for live updates
+    if (chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg?.type === 'PRIVACY_TELEMETRY_UPDATED' && msg.payload) {
+          updateSidepanelTelemetry(msg.payload);
+        } else if (msg?.type === 'APPROVAL_REQUIRED' && msg.payload) {
+          showApprovalModal(msg.payload);
+        } else if (msg?.type === 'RENDER_TIMELINE_STEP' && msg.payload) {
+          addTimelineStep(msg.payload);
+        } else if (msg?.type === 'UPDATE_ETA' && msg.payload) {
+          document.getElementById('eta-label').textContent = `ETA: ${msg.payload.steps * 2}s (Planning ${msg.payload.steps} steps)`;
+          document.getElementById('progress-fill').style.width = '15%';
+        }
+      });
+    }
+
+    function addTimelineStep(payload) {
+      const timeline = document.getElementById('timeline');
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      
+      let imgHtml = '';
+      if (payload.screenshot) {
+         imgHtml = `<img src="${payload.screenshot}" style="max-width:100%; margin-top:6px; border-radius:4px; border:1px solid #374151;">`;
+      }
+      
+      item.innerHTML = `
+        <div class="timeline-title">${payload.title}</div>
+        <div class="timeline-detail">${payload.detail}</div>
+        ${imgHtml}
+      `;
+      timeline.appendChild(item);
+      timeline.scrollTop = timeline.scrollHeight;
+      
+      // Advance progress slightly
+      const fill = document.getElementById('progress-fill');
+      let currentW = parseInt(fill.style.width) || 0;
+      if (currentW < 90) fill.style.width = (currentW + 15) + '%';
+    }
+
+    document.getElementById('btn-undo')?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'UNDO_ACTION' });
+      addTimelineStep({ title: 'Undo Requested', detail: 'Rolling back last action via server...' });
+    });
+
+    function showApprovalModal(payload) {
+      currentApprovalActionId = payload.actionId;
+      const modal = document.getElementById('modal-approval');
+      const desc = document.getElementById('approval-description');
+      const risk = document.getElementById('approval-risk-badge');
+      
+      desc.textContent = payload.description || 'Action requires approval.';
+      
+      const riskLevel = (payload.riskLevel || 'SAFE').toUpperCase();
+      risk.textContent = riskLevel;
+      risk.className = 'risk-badge';
+      if (riskLevel === 'CRITICAL') risk.classList.add('risk-critical');
+      else if (riskLevel === 'CAUTION') risk.classList.add('risk-caution');
+      else risk.classList.add('risk-safe');
+
+      modal.style.display = 'flex';
+    }
+
+    function sendApprovalResponse(approved) {
+      if (!currentApprovalActionId) return;
+      chrome.runtime.sendMessage({
+        type: 'APPROVAL_RESPONSE',
+        payload: {
+          actionId: currentApprovalActionId,
+          approved: approved,
+          client_timestamp: Date.now()
+        }
+      });
+      document.getElementById('modal-approval').style.display = 'none';
+      currentApprovalActionId = null;
+    }
+
+    document.getElementById('btn-approve')?.addEventListener('click', () => sendApprovalResponse(true));
+    document.getElementById('btn-deny')?.addEventListener('click', () => sendApprovalResponse(false));
+  </script>
+</body>
+</html>

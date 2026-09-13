@@ -45,17 +45,62 @@
   - Updated `api/websocket_handler.py` — STEP_RESULT error recovery: SELECTOR_NOT_FOUND → VLM /ground, ELEMENT_OBSCURED → VLM /detect-obstacles + DISMISS_POPUP, CAPTCHA_TRIGGERED → CAPTCHA_HANDOFF, PAGE_TIMEOUT → WAIT + retry
   - Created `colab_setup.py` — Step-by-step Colab notebook script (install deps, verify GPU, load LLM, start server, ngrok tunnel, test)
   - All Phase 3 tests pass (VLM imports, screenshot detection, mocked VLM context, error recovery routing, full import chain)
+- **Phase 5**: Full protocol hookup completed:
+  - `state/task_tracker.py` — Full step state machine implementation:
+    - States: PENDING → RUNNING → SUCCESS/FAILED/BLOCKED_APPROVAL → RETRYING → HYBRID_FALLBACK
+    - Valid state transitions enforced via `VALID_TRANSITIONS` dict
+    - `StepRecord` tracks attempts, errors, VLM fallback usage, approval status
+    - `TaskTracker` class with plan lifecycle management, pause/resume/stop, step queries
+    - `handle_step_result()` routes error codes to appropriate next states
+    - Global registry: `get_tracker(session_id)` / `remove_tracker(session_id)`
+  - Updated `api/websocket_handler.py`:
+    - Full approval gate flow: CRITICAL steps → BLOCKED_APPROVAL → APPROVAL_RESPONSE → RUNNING
+    - Task tracker integration: all state transitions tracked per session
+    - Error recovery routing with tracker updates (SELECTOR_NOT_FOUND → HYBRID_FALLBACK, etc.)
+    - PAUSE/RESUME/STOP handlers now update tracker state
+    - Step dispatch via `_dispatch_next_step()` and `_dispatch_next_step_from_tracker()`
+- **Phase 6**: Session memory & advanced features completed:
+  - `state/session_manager.py` — Session lifecycle with SQLite persistence:
+    - `create_session()` — new session with empty memory
+    - `restore_session()` — load from SQLite by session_id
+    - `archive_session()` — mark session as archived
+    - `update_session()` — update session fields (goal, plan_id, step_ids, preferences, entities)
+    - `list_sessions()` — list active/archived sessions
+    - `delete_session()` — permanent deletion
+    - Singleton accessor: `get_session_manager()`
+  - `state/memory_store.py` — Cross-session memory with SQLite + JSON snapshots:
+    - `store()` / `retrieve()` / `delete()` — generic key-value memory operations
+    - `store_preference()` / `get_preferences()` — user preference persistence
+    - `store_goal()` / `get_completed_goals()` — completed goal tracking
+    - `store_entity()` / `get_entities()` — extracted entity storage
+    - `store_history()` / `get_history()` — action/event history
+    - `get_session_context()` — assemble cross-session context for planner
+    - `save_snapshot()` / `load_snapshot()` — JSON file snapshots
+    - Singleton accessor: `get_memory_store()`
+  - Updated `core/planner.py`:
+    - `generate_plan()` now fetches cross-session context from memory store
+    - Context carry-forward: preferences, recent goals, known entities merged into prompt
+  - Updated `api/websocket_handler.py`:
+    - `SESSION_RESTORE` handler loads session from session manager
+    - `USER_QUERY` handler creates/updates session in session manager
+    - Session lifecycle wired into WebSocket flow
 
 ## In Progress
 
 - Phase 4: Pair with Dev 1 for real WebSocket integration (requires Dev 1's extension)
+- Phase 7: Demo rehearsal (requires Phases 4-6 complete)
 
 ## Recent Decisions
 
 - `execution_mode` defaults to `DOM` for actions like EXTRACT/REPORT_RESULT that don't need a specific mode.
 - Protocol classification uses keyword matching on description text (critical keywords: purchase, login, delete, payment; caution keywords: form, fill, submit, filter).
 - Qwen3-14B prompt engineering chosen over fine-tuning for Phase 2; fine-tuning deferred to Phase 6/7 if failure rate >10%.
+- Task tracker uses global registry (dict) for per-session trackers — sufficient for single-server deployment.
+- Session persistence uses SQLite (single file) rather than PostgreSQL — simpler for hackathon deployment.
+- Memory store uses same SQLite database as sessions — avoids connection management complexity.
+- Context carry-forward passes user preferences and recent goals to planner — enables "continue from where we left off" functionality.
 
 ## Open Issues / Blockers
 
-- None currently. Ready to proceed to Phase 1.
+- Phase 4 requires Dev 1's extension to be working — cannot test real WebSocket integration solo.
+- Phase 7 (demo rehearsal) depends on Phases 4-6 being complete.

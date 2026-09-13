@@ -1,0 +1,14 @@
+{
+  "screen_type": "checkout",
+  "confidence": 0.88,
+  "faces_detected": [
+    { "bbox": [400, 120, 480, 200], "confidence": 0.97 }
+  ],
+  "pii_regions": [
+    { "type": "face", "bbox": [400, 120, 480, 200] },
+    { "type": "text_pii", "bbox": [100, 500, 300, 520], "label": "email" },
+    { "type": "text_pii", "bbox": [410, 150, 470, 195], "label": "name" }
+  ],
+  "backend": "webgpu",
+  "processing_ms": 24
+}

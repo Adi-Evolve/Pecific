@@ -1,0 +1,905 @@
+# SIH PS26171 — Privacy-Preserving Vision Browser Agent: Complete Architecture & Build Plan
+
+## 1. Executive Summary
+
+Build a **privacy-preserving autonomous browser agent** delivered as a Chrome/Firefox extension (client) + Python server. The client runs lightweight vision & PII models on-device via WebGPU, sanitizes all sensitive data, and sends only anonymized context to the server. The server uses an LLM for planning/reasoning and a VLM for visual grounding, returning structured action commands the extension executes.
+
+> [!IMPORTANT]
+> **Key Differentiator**: Unlike commercial agents (Perplexity Comet, ChatGPT Atlas), our agent enforces **data-never-leaves-device** for PII — the server literally cannot see sensitive content. This is the core SIH evaluation criteria (40% weight on PII detection + redaction precision).
+
+---
+
+## 2. High-Level System Architecture
+
+```mermaid
+graph TB
+    subgraph "CLIENT — Browser Extension"
+        UI["Extension UI<br/>(Popup + Side Panel)"]
+        SW["Service Worker<br/>(Orchestrator)"]
+        CS["Content Scripts<br/>(per-tab agents)"]
+        VW["Vision Worker<br/>(Web Worker + WebGPU)"]
+        PW["Privacy Worker<br/>(Web Worker)"]
+        VAULT["Credential Vault<br/>(Encrypted Local Storage)"]
+        TM["Tab Manager"]
+        
+        UI --> SW
+        SW --> CS
+        SW --> VW
+        SW --> PW
+        SW --> TM
+        SW --> VAULT
+        CS -->|"DOM snapshot"| SW
+        VW -->|"screenshot analysis"| SW
+        PW -->|"sanitized data"| SW
+    end
+
+    subgraph "NETWORK"
+        API["WebSocket / REST API<br/>(Sanitized Data Only)"]
+    end
+
+    subgraph "SERVER — Python Backend"
+        GW["API Gateway<br/>(FastAPI)"]
+        PM["Planning Module<br/>(LLM — Qwen3-14B)"]
+        VM["Vision Module<br/>(VLM — Qwen2.5-VL-7B)"]
+        SM["Session Manager<br/>(Redis/SQLite)"]
+        PE["Protocol Engine"]
+        
+        GW --> PM
+        GW --> VM
+        GW --> SM
+        PM --> PE
+    end
+
+    SW -->|"sanitized DOM + redacted screenshot"| API
+    API --> GW
+    GW -->|"structured actions"| API
+    API --> SW
+```
+
+---
+
+## 3. Model Selection (Optimized for Colab Free Tier — 15 GB VRAM T4)
+
+### 3.1 Client-Side Models (Browser — runs via ONNX Runtime Web + WebGPU)
+
+| Role | Model | Size | Latency | Why This Model |
+|:---|:---|:---|:---|:---|
+| **Face Detection** | BlazeFace (MediaPipe) | ~400 KB | <10 ms | Fastest browser face detector; real-time; sub-ms on WebGPU |
+| **Text PII (NER)** | Xenova/bert-base-NER (quantized INT8 ONNX) | ~65 MB | ~50 ms | Proven browser NER; runs in Web Worker; detects PERSON, ORG, LOC |
+| **Screen Understanding** | MobileViT-XXS (ONNX q8) | ~5 MB | ~30 ms | Lightweight ViT for screen classification; WebGPU accelerated |
+| **OCR (on-device)** | Tesseract.js (WASM) | ~15 MB | ~200 ms | Extract text from screenshots locally for PII scanning |
+| **Regex PII** | Custom regex engine | ~2 KB | <1 ms | Deterministic: emails, phones, Aadhaar, PAN, credit cards, passwords |
+
+> [!TIP]
+> **Hybrid PII Strategy**: Regex catches structured PII (100% precision), NER catches contextual PII (names, addresses), BlazeFace catches faces, OCR catches text-in-images. This 4-layer defense maximizes the 20% recall/precision score.
+
+### 3.2 Server-Side Models (Colab Free Tier — T4 16 GB VRAM)
+
+We run **two separate Colab notebooks** — one for LLM, one for VLM — exposed via ngrok tunnels:
+
+| Role | Model | Quantization | VRAM Usage | Why This Model |
+|:---|:---|:---|:---|:---|
+| **LLM (Planner/Reasoner)** | **Qwen3-14B** (4-bit AWQ) | Q4_K_M | ~10 GB | Best reasoning at 14B; strong CoT; agentic tool-use; structured JSON output |
+| **VLM (Visual Grounding)** | **Qwen2.5-VL-7B-Instruct** (4-bit BnB) | INT4 | ~6 GB | SOTA GUI grounding; bounding box prediction; action prediction from screenshots |
+
+> [!WARNING]
+> **T4 Limitation**: T4 lacks Flash Attention 2 (needs Ampere+). Disable it in config. Use `load_in_4bit=True` via bitsandbytes. Resize screenshots to max 1280px width before VLM inference.
+
+**Alternative Models** (if Colab upgrades or you get better GPU):
+
+| Model | Use Case | VRAM |
+|:---|:---|:---|
+| Qwen3-30B-A3B (MoE) | Better reasoning, same VRAM as 14B | ~12 GB Q4 |
+| Gemma-4-12B | Strong multimodal alternative | ~8 GB Q4 |
+| DeepSeek-R1-Distill-14B | Step-by-step chain-of-thought | ~10 GB Q4 |
+
+---
+
+## 4. Layered Build Architecture — The 7 Layers
+
+```mermaid
+graph LR
+    L1["Layer 1<br/>Extension Shell<br/>(MV3 + UI)"]
+    L2["Layer 2<br/>DOM Engine<br/>(Content Scripts)"]
+    L3["Layer 3<br/>Vision Engine<br/>(WebGPU Workers)"]
+    L4["Layer 4<br/>Privacy Engine<br/>(Sanitization)"]
+    L5["Layer 5<br/>Communication<br/>(Client ↔ Server)"]
+    L6["Layer 6<br/>Server Brain<br/>(LLM + VLM)"]
+    L7["Layer 7<br/>Execution Engine<br/>(Action Runner)"]
+    
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+    L4 --> L5
+    L5 --> L6
+    L6 --> L7
+    L7 -->|"loop"| L2
+```
+
+### Layer 1: Extension Shell (Manifest V3)
+
+```
+extension/
+├── manifest.json              # MV3 config, permissions
+├── service-worker.js          # Central orchestrator (brain)
+├── popup/
+│   ├── popup.html             # Main UI panel
+│   ├── popup.css
+│   └── popup.js
+├── sidepanel/
+│   ├── sidepanel.html         # Persistent side panel UI
+│   ├── sidepanel.css
+│   └── sidepanel.js
+├── content/
+│   ├── content-script.js      # Per-tab DOM agent
+│   ├── dom-extractor.js       # Semantic DOM extraction
+│   └── action-executor.js     # DOM action execution
+├── workers/
+│   ├── vision-worker.js       # ViT + BlazeFace inference
+│   ├── privacy-worker.js      # NER + OCR + Regex PII
+│   └── models/                # ONNX model files (cached in IndexedDB)
+├── vault/
+│   └── vault-manager.js       # Encrypted credential store
+├── tab-manager/
+│   └── tab-manager.js         # Multi-tab orchestration
+├── lib/
+│   ├── ort.webgpu.min.js      # ONNX Runtime Web
+│   └── transformers.min.js    # Transformers.js
+└── assets/
+    └── icons/
+```
+
+**Key Permissions** (manifest.json):
+```json
+{
+  "manifest_version": 3,
+  "permissions": [
+    "activeTab", "tabs", "scripting", "storage",
+    "notifications", "sidePanel", "offscreen"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "service-worker.js" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content/content-script.js"],
+    "run_at": "document_idle"
+  }]
+}
+```
+
+### Layer 2: DOM Engine (Content Scripts)
+
+The DOM Engine extracts a **semantic accessibility tree** from the page (inspired by Browser-Use's approach):
+
+```mermaid
+graph TD
+    RAW["Raw DOM"] --> PARSE["Parse Accessibility Tree"]
+    PARSE --> FILTER["Filter Interactive Elements"]
+    FILTER --> TAG["Tag Elements with IDs"]
+    TAG --> SANITIZE["Sanitize Text Content"]
+    SANITIZE --> COMPRESS["Compress to JSON"]
+    COMPRESS --> SEND["Send to Service Worker"]
+```
+
+**DOM Extraction Output** (what gets sent to server after sanitization):
+```json
+{
+  "url": "https://flipkart.com/search?q=headphones",
+  "title": "Headphones - Buy Headphones Online",
+  "viewport": { "width": 1920, "height": 1080 },
+  "elements": [
+    { "id": 1, "tag": "INPUT", "type": "search", "role": "searchbox", "placeholder": "Search for products...", "rect": [245, 18, 580, 48] },
+    { "id": 2, "tag": "BUTTON", "text": "🔍", "role": "button", "rect": [580, 18, 620, 48] },
+    { "id": 3, "tag": "A", "text": "boAt Bassheads 100", "role": "link", "rect": [120, 280, 350, 310] },
+    { "id": 4, "tag": "SPAN", "text": "₹449", "class": "price", "rect": [120, 315, 180, 335] }
+  ],
+  "forms": [
+    { "id": "login-form", "fields": ["email", "password"], "vault_available": { "email": true, "password": true } }
+  ]
+}
+```
+
+### Layer 3: Vision Engine (WebGPU Workers)
+
+```mermaid
+graph TD
+    CAPTURE["chrome.tabs.captureVisibleTab()"] --> RESIZE["Resize to 1280x720"]
+    RESIZE --> WORKER["Vision Web Worker"]
+    
+    subgraph "Vision Worker (Off Main Thread)"
+        WORKER --> MOBILEVIT["MobileViT-XXS<br/>(Screen Classification)"]
+        WORKER --> BLAZEFACE["BlazeFace<br/>(Face Detection)"]
+        MOBILEVIT --> RESULT1["Screen State:<br/>login_page | search_results | checkout"]
+        BLAZEFACE --> RESULT2["Face Bounding Boxes"]
+    end
+    
+    RESULT1 --> MERGE["Merge Results"]
+    RESULT2 --> MERGE
+    MERGE --> OUTPUT["Vision Context JSON"]
+```
+
+**Vision Context Output**:
+```json
+{
+  "screen_type": "search_results",
+  "confidence": 0.94,
+  "faces_detected": [
+    { "bbox": [400, 120, 480, 200], "confidence": 0.97 }
+  ],
+  "pii_regions": [
+    { "type": "face", "bbox": [400, 120, 480, 200] },
+    { "type": "text_pii", "bbox": [100, 500, 300, 520], "label": "email" }
+  ]
+}
+```
+
+### Layer 4: Privacy Engine (Sanitization Pipeline)
+
+This is the **critical differentiator** — the 4-stage privacy pipeline:
+
+```mermaid
+graph TD
+    subgraph "Stage 1: Visual PII Detection"
+        IMG["Screenshot"] --> FACE["BlazeFace → Face BBs"]
+        IMG --> OCR["Tesseract.js → Extract Text"]
+        OCR --> NER["BERT-NER → Named Entities"]
+    end
+    
+    subgraph "Stage 2: DOM PII Detection"
+        DOM["DOM Snapshot"] --> REGEX["Regex Engine"]
+        DOM --> DOMNER["BERT-NER on text nodes"]
+        REGEX --> R1["Emails, Phones, Aadhaar, PAN, Credit Cards"]
+        DOMNER --> R2["Names, Addresses, Organizations"]
+    end
+    
+    subgraph "Stage 3: Redaction"
+        FACE --> REDACT["Redaction Engine"]
+        R1 --> REDACT
+        R2 --> REDACT
+        NER --> REDACT
+        REDACT --> REDACTED_IMG["Black-box faces + blur PII regions"]
+        REDACT --> REDACTED_DOM["Replace PII with tokens:<br/>[NAME_1], [EMAIL_1], [PHONE_1]"]
+    end
+    
+    subgraph "Stage 4: Redaction Map (Client-Only)"
+        REDACT --> MAP["Redaction Map<br/>(never sent to server)"]
+        MAP --> RESTORE["Used to restore data<br/>when executing actions"]
+    end
+```
+
+**PII Categories Detected**:
+
+| Category | Detection Method | Example → Redacted |
+|:---|:---|:---|
+| Faces | BlazeFace | Photo → Black rectangle |
+| Names | BERT-NER | "Aditya Sharma" → `[NAME_1]` |
+| Emails | Regex + NER | "aditya@gmail.com" → `[EMAIL_1]` |
+| Phone Numbers | Regex | "+91 98765 43210" → `[PHONE_1]` |
+| Aadhaar | Regex (pattern: XXXX XXXX XXXX) | "1234 5678 9012" → `[AADHAAR_1]` |
+| PAN | Regex (ABCDE1234F) | "ABCPD1234E" → `[PAN_1]` |
+| Credit Cards | Regex (Luhn) | "4111-1111-1111-1111" → `[CARD_1]` |
+| Passwords | DOM `type="password"` | "••••••" → `[PASSWORD_FIELD]` |
+| Addresses | BERT-NER (LOC) | "123 MG Road, Delhi" → `[ADDRESS_1]` |
+
+**Redaction Map** (stays on client, never transmitted):
+```json
+{
+  "[NAME_1]": "Aditya Sharma",
+  "[EMAIL_1]": "aditya@gmail.com",
+  "[PHONE_1]": "+91 98765 43210",
+  "vault_mapping": {
+    "email": true,
+    "password": true,
+    "name": true,
+    "phone": false
+  }
+}
+```
+
+### Layer 5: Communication Protocol (Client ↔ Server)
+
+```mermaid
+sequenceDiagram
+    participant EXT as Extension
+    participant WS as WebSocket
+    participant SRV as Server
+    
+    EXT->>WS: Connect (session_id)
+    SRV-->>EXT: ACK + session restored
+    
+    Note over EXT: User types: "Buy headphones under ₹1000 on Flipkart"
+    
+    EXT->>SRV: { type: "USER_QUERY", query: "...", dom_snapshot: {...}, vision_context: {...}, vault_manifest: {...} }
+    
+    SRV->>SRV: LLM generates plan
+    SRV-->>EXT: { type: "PLAN", goal: "...", steps: [...] }
+    
+    EXT->>EXT: Execute step 1 (navigate)
+    EXT->>SRV: { type: "STEP_RESULT", step_id: 1, status: "done", dom_snapshot: {...}, screenshot_b64: "..." }
+    
+    SRV->>SRV: VLM verifies screenshot
+    SRV-->>EXT: { type: "NEXT_STEP", step_id: 2, action: "..." }
+    
+    Note over EXT: Step requires credential → PROTOCOL_CHECK
+    SRV-->>EXT: { type: "APPROVAL_REQUIRED", reason: "Login required", vault_key: "email" }
+    EXT->>EXT: Show approval dialog
+    EXT->>SRV: { type: "APPROVAL_GRANTED", use_vault: true }
+```
+
+**Message Schema**:
+```typescript
+interface AgentMessage {
+  type: "USER_QUERY" | "STEP_RESULT" | "PLAN" | "NEXT_STEP" | 
+        "APPROVAL_REQUIRED" | "APPROVAL_GRANTED" | "ERROR" | 
+        "DYNAMIC_OBSTACLE" | "TASK_COMPLETE" | "SESSION_RESTORE";
+  session_id: string;
+  timestamp: number;
+  payload: Record<string, any>;
+}
+```
+
+### Layer 6: Server Brain (LLM + VLM Pipeline)
+
+```mermaid
+graph TD
+    subgraph "Server Architecture"
+        GW["FastAPI Gateway<br/>(WebSocket + REST)"]
+        
+        subgraph "Planning Module (LLM — Qwen3-14B)"
+            QI["Query Interpreter"]
+            PP["Plan Planner"]
+            COT["Chain-of-Thought Engine"]
+            SC["Self-Correction Module"]
+            PROT["Protocol Engine"]
+        end
+        
+        subgraph "Vision Module (VLM — Qwen2.5-VL-7B)"
+            VG["Visual Grounding"]
+            VA["Visual Verification"]
+            OD["Obstacle Detection"]
+        end
+        
+        subgraph "State Management"
+            SM["Session Manager"]
+            TK["Task Tracker"]
+            MEM["Memory Store<br/>(Current + Past Sessions)"]
+        end
+        
+        GW --> QI
+        QI --> PP
+        PP --> COT
+        COT --> PROT
+        PP --> VG
+        VG --> VA
+        COT --> SC
+        GW --> SM
+        SM --> TK
+        SM --> MEM
+    end
+```
+
+### Layer 7: Execution Engine (Action Runner — on Client)
+
+The extension executes structured actions received from the server:
+
+```mermaid
+graph TD
+    ACTION["Receive Action from Server"] --> CHECK["Protocol Check"]
+    CHECK -->|"SAFE"| MODE{"Execution Mode?"}
+    CHECK -->|"CRITICAL"| APPROVE["Request User Approval"]
+    APPROVE -->|"Approved"| MODE
+    APPROVE -->|"Denied"| SKIP["Skip / Manual"]
+    
+    MODE -->|"DOM"| DOM_EXEC["DOM Executor<br/>(querySelector + dispatch events)"]
+    MODE -->|"VISION"| VIS_EXEC["Vision Executor<br/>(coordinate-based click)"]
+    MODE -->|"HYBRID"| HYB_EXEC["Try DOM first → fallback to Vision"]
+    
+    DOM_EXEC --> VERIFY["Verify Action Result"]
+    VIS_EXEC --> VERIFY
+    HYB_EXEC --> VERIFY
+    
+    VERIFY -->|"Success"| REPORT["Report to Server"]
+    VERIFY -->|"Failed"| RETRY["Self-Correct / Report Error"]
+    RETRY --> REPORT
+```
+
+---
+
+## 5. Structured Action Protocol (Server → Client)
+
+> [!IMPORTANT]
+> The LLM **never** returns plain English. All responses are structured JSON conforming to this schema.
+
+### Action Schema
+
+```json
+{
+  "session_id": "sess_abc123",
+  "goal": "Find and select headphones under ₹1000 on Flipkart",
+  "plan": {
+    "total_steps": 5,
+    "estimated_time_s": 45,
+    "chain_of_thought": "User wants budget headphones. Need to navigate to Flipkart, search, apply price filter, then present options."
+  },
+  "current_step": {
+    "id": 1,
+    "action": "NAVIGATE",
+    "target": { "url": "https://www.flipkart.com" },
+    "execution_mode": "DOM",
+    "protocol_level": "SAFE",
+    "fallback": { "action": "REPORT_ERROR", "reason": "site_unreachable" },
+    "timeout_ms": 10000,
+    "verify": {
+      "method": "DOM_CHECK",
+      "condition": "document.querySelector('input[title=Search]') !== null"
+    }
+  },
+  "task_state": {
+    "completed": [],
+    "current": 1,
+    "remaining": [2, 3, 4, 5],
+    "status": "IN_PROGRESS"
+  },
+  "memory": {
+    "context_from_previous": null,
+    "key_observations": []
+  }
+}
+```
+
+### Complete Action Vocabulary
+
+| Action | Execution Mode | Description |
+|:---|:---|:---|
+| `NAVIGATE` | DOM | Open URL in agent tab |
+| `CLICK` | DOM / VISION / HYBRID | Click element by selector or coordinates |
+| `TYPE` | DOM | Type text into input field |
+| `TYPE_FROM_VAULT` | DOM (local only) | Fill from vault — data never sent to server |
+| `SCROLL` | DOM | Scroll page/element |
+| `SELECT` | DOM | Select dropdown option |
+| `WAIT` | — | Wait for element/condition |
+| `SCREENSHOT` | — | Capture current state for VLM |
+| `EXTRACT` | DOM | Extract data from page |
+| `NEW_TAB` | DOM | Open new tab (inherits session) |
+| `SWITCH_TAB` | DOM | Switch to another agent tab |
+| `CLOSE_TAB` | DOM | Close agent tab |
+| `DISMISS_POPUP` | HYBRID | Close modal/popup/ad overlay |
+| `CAPTCHA_HANDOFF` | — | Notify user to solve CAPTCHA |
+| `APPROVE_ACTION` | — | Request user approval before proceeding |
+| `REPORT_RESULT` | — | Return extracted data/status to user |
+
+### Protocol Levels
+
+```json
+{
+  "protocol_levels": {
+    "SAFE": "Agent executes autonomously (navigation, search, scroll, extract)",
+    "CAUTION": "Agent notifies user but proceeds unless stopped (form fills, filter changes)",
+    "CRITICAL": "Agent MUST get explicit approval (purchases, payments, account changes, deletions, sending messages)",
+    "FORBIDDEN": "Agent NEVER executes (financial transactions without approval, deleting accounts, sharing credentials)"
+  }
+}
+```
+
+---
+
+## 6. Feature Implementation Details
+
+### 6.1 Credential Vault (Point 12)
+
+```mermaid
+graph LR
+    USER["User adds credentials"] --> ENCRYPT["AES-256-GCM Encrypt<br/>(browser crypto API)"]
+    ENCRYPT --> STORE["chrome.storage.local<br/>(encrypted blob)"]
+    
+    subgraph "What Server Sees (Page Table)"
+        PT["{ name: true, email: true, phone: false, address: true, password: true }"]
+    end
+    
+    subgraph "What Server NEVER Sees"
+        RAW["Actual values: 'Aditya', 'aditya@gmail.com', etc."]
+    end
+    
+    STORE -.->|"manifest only"| PT
+```
+
+- Server knows **what types** of data are available, never the values
+- When server sends `TYPE_FROM_VAULT` action, extension fills locally
+- Vault is encrypted with Web Crypto API (AES-256-GCM), key derived from user passphrase
+
+### 6.2 Tab Manager (Points 8, 9, 20)
+
+```json
+{
+  "tab_registry": {
+    "user_tabs": [101, 102, 103],
+    "agent_tabs": [
+      { "id": 201, "purpose": "flipkart_search", "status": "active", "badge": "🤖" },
+      { "id": 202, "purpose": "price_comparison", "status": "idle", "badge": "🤖" }
+    ],
+    "policy": {
+      "agent_reads_user_tabs": false,
+      "agent_writes_user_tabs": false,
+      "inherit_session": true,
+      "max_agent_tabs": 5,
+      "visual_marker": { "type": "border", "color": "#00ff88", "badge": "🤖 Agent" }
+    }
+  }
+}
+```
+
+- Agent tabs inherit user's cookies/session (same browsing profile)
+- Agent tabs get visible green border + 🤖 badge (Point 22)
+- User tabs are read-only to agent; agent never touches them (Point 8)
+- Agent continues working when user switches away; sends desktop notification on completion (Point 23)
+
+### 6.3 Dynamic Obstacle Handling (Point 19)
+
+```mermaid
+graph TD
+    STEP["Execute Step"] --> VERIFY["Verify Expected State"]
+    VERIFY -->|"Match"| NEXT["Proceed to Next Step"]
+    VERIFY -->|"Mismatch"| DETECT["Obstacle Detection"]
+    
+    DETECT --> CLASSIFY{"Classify Obstacle"}
+    CLASSIFY -->|"Popup / Ad"| DISMISS["Find ✕ button → Click → Retry"]
+    CLASSIFY -->|"Login Wall"| LOGIN["Check vault → Request approval → Login"]
+    CLASSIFY -->|"CAPTCHA"| CAPTCHA["Pause → Notify user → Wait"]
+    CLASSIFY -->|"Cookie Banner"| COOKIE["Accept/Dismiss → Retry"]
+    CLASSIFY -->|"Page Change"| REPLAN["Send new DOM to server → Re-plan"]
+    CLASSIFY -->|"Unknown"| FALLBACK["Screenshot → Send to VLM → Get guidance"]
+```
+
+**Server-side obstacle prompt template**:
+```
+The agent expected to see [EXPECTED_STATE] but encountered an unexpected element.
+Current DOM contains: [OBSTACLE_DOM_SNIPPET]
+Screenshot attached.
+Classify this obstacle and provide the appropriate action to resolve it.
+Respond in structured JSON only.
+```
+
+### 6.4 Chain-of-Thought & Session Memory (Points 15, 16, 17)
+
+```json
+{
+  "session": {
+    "id": "sess_abc123",
+    "created_at": "2026-09-10T10:00:00Z",
+    "goal_history": [
+      {
+        "goal": "Find headphones under ₹1000 on Flipkart",
+        "status": "completed",
+        "result_summary": "Found boAt Bassheads 100 at ₹449",
+        "steps_executed": 5,
+        "key_observations": ["Flipkart showed login popup, dismissed", "Applied price filter ₹0-₹1000"],
+        "artifacts": { "product_url": "https://flipkart.com/..." }
+      }
+    ],
+    "current_goal": {
+      "goal": "Now buy the selected headphone",
+      "continuation_from": "sess_abc123/goal_0",
+      "context_carried": ["product_url", "product_name", "price"]
+    }
+  }
+}
+```
+
+### 6.5 Web Scraping & Data Extraction (Point 24)
+
+> **In scope and necessary.** The agent needs data extraction for:
+> - Extracting product info, prices, search results
+> - Reading page content to answer user questions
+> - Filling forms with extracted data
+
+**Approach**: DOM-first extraction (fast, structured) with Vision fallback (for canvas/image content).
+
+```typescript
+// DOM Extraction (primary — fast)
+const extractedData = {
+  method: "DOM",
+  selectors: {
+    product_name: "span._35KyD6",
+    price: "div._30jeq3",
+    rating: "div._3LWZlK"
+  },
+  results: [
+    { product_name: "boAt Bassheads 100", price: "₹449", rating: "4.1" }
+  ]
+};
+
+// Vision Extraction (fallback — for non-DOM content)
+// Send screenshot to VLM with prompt:
+// "Extract all product names and prices visible in this screenshot. Return as JSON array."
+```
+
+---
+
+## 7. Complete Data Flow Pipeline
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Extension UI
+    participant SW as Service Worker
+    participant CS as Content Script
+    participant VW as Vision Worker
+    participant PW as Privacy Worker
+    participant V as Vault
+    participant S as Server (LLM+VLM)
+    
+    U->>UI: "Buy headphones under ₹1000 on Flipkart"
+    UI->>SW: Forward query
+    
+    rect rgb(40, 40, 80)
+    Note over SW,PW: Phase 1: Capture Context
+    SW->>CS: Request DOM snapshot
+    CS-->>SW: Raw DOM tree
+    SW->>VW: Request screenshot analysis
+    VW-->>SW: Screen state + face BBs
+    end
+    
+    rect rgb(80, 40, 40)
+    Note over SW,PW: Phase 2: Sanitize (ALL LOCAL)
+    SW->>PW: DOM + screenshot + vision results
+    PW->>PW: Regex PII scan on DOM text
+    PW->>PW: BERT-NER on DOM text
+    PW->>PW: OCR screenshot → NER on extracted text
+    PW->>PW: BlackOut faces from BlazeFace BBs
+    PW-->>SW: Sanitized DOM + Redacted screenshot + Redaction map
+    end
+    
+    SW->>V: Get vault manifest (keys only, no values)
+    V-->>SW: { email: true, password: true, ... }
+    
+    rect rgb(40, 80, 40)
+    Note over SW,S: Phase 3: Server Processing
+    SW->>S: { query, sanitized_dom, redacted_screenshot, vault_manifest }
+    S->>S: LLM: Parse query → Generate plan (CoT)
+    S->>S: VLM: Verify screen state matches plan
+    S-->>SW: Structured Action Plan (JSON)
+    end
+    
+    rect rgb(80, 80, 40)
+    Note over SW,CS: Phase 4: Execute Actions
+    loop For each step
+        SW->>CS: Execute action (DOM/VISION/HYBRID)
+        CS-->>SW: Result + new DOM snapshot
+        SW->>PW: Sanitize new state
+        PW-->>SW: Sanitized update
+        SW->>S: Step result + updated context
+        S-->>SW: Next step / correction / approval request
+        
+        alt Protocol = CRITICAL
+            SW->>UI: Show approval dialog
+            U->>UI: Approve / Deny
+            UI->>SW: Decision
+        end
+        
+        alt CAPTCHA detected
+            SW->>UI: "CAPTCHA detected — please solve manually"
+            U->>UI: Solves CAPTCHA
+            UI->>SW: Resume
+        end
+        
+        alt Vault data needed
+            SW->>UI: "Need email from vault. Allow?"
+            U->>UI: Allow vault access
+            SW->>V: Get encrypted value
+            V-->>SW: Decrypted value (stays local)
+            SW->>CS: Fill form locally (value never sent to server)
+        end
+    end
+    end
+    
+    SW->>UI: Task complete + results
+    SW->>S: Update session memory
+    Note over U: Desktop notification: "Task completed!"
+```
+
+---
+
+## 8. Server Architecture Detail
+
+```
+server/
+├── main.py                        # FastAPI app entry point
+├── config.py                      # Model configs, API settings
+├── requirements.txt
+│
+├── api/
+│   ├── websocket_handler.py       # WebSocket connection manager
+│   └── routes.py                  # REST endpoints (health, sessions)
+│
+├── core/
+│   ├── planner.py                 # LLM-based query → plan generation
+│   ├── chain_of_thought.py        # CoT reasoning engine
+│   ├── self_correction.py         # Error detection & replanning
+│   └── protocol_engine.py         # Action safety classification
+│
+├── vision/
+│   ├── visual_grounding.py        # VLM screenshot analysis
+│   ├── obstacle_detector.py       # Dynamic obstacle classification
+│   └── verification.py            # Verify action execution via screenshot
+│
+├── state/
+│   ├── session_manager.py         # Session lifecycle (create/restore/archive)
+│   ├── task_tracker.py            # Step-by-step progress tracking
+│   └── memory_store.py            # Cross-session memory (SQLite/JSON)
+│
+├── models/
+│   ├── llm_loader.py              # Qwen3-14B loader (4-bit)
+│   └── vlm_loader.py              # Qwen2.5-VL-7B loader (4-bit)
+│
+└── schemas/
+    ├── actions.py                 # Action type definitions
+    ├── messages.py                # WebSocket message schemas
+    └── protocols.py               # Protocol level definitions
+```
+
+### Server Planning Prompt Template
+
+```
+You are a browser automation planner. Given the user's goal and the current browser state, 
+generate a structured execution plan.
+
+RULES:
+1. ALWAYS output valid JSON. NEVER output plain English.
+2. Each step MUST have: id, action, execution_mode, protocol_level, verify condition.
+3. For sensitive actions (purchase, login, delete), set protocol_level = "CRITICAL".
+4. The DOM snapshot uses [TOKEN] placeholders for redacted PII. Work with tokens, not real data.
+5. If vault_manifest shows a field is available, use TYPE_FROM_VAULT action.
+6. Include DISMISS_POPUP as a contingency for steps involving navigation.
+7. If you cannot determine the next action from DOM alone, request a SCREENSHOT for VLM analysis.
+
+USER GOAL: {goal}
+CURRENT URL: {url}
+DOM SNAPSHOT: {sanitized_dom}
+VAULT MANIFEST: {vault_manifest}
+PREVIOUS STEPS: {completed_steps}
+SESSION HISTORY: {session_memory}
+
+OUTPUT FORMAT:
+{action_schema}
+```
+
+---
+
+## 9. Additional Features for User Comfort & Automation
+
+| # | Feature | Description | Priority |
+|:---|:---|:---|:---|
+| 1 | **Smart Wait** | Agent waits for page loads, AJAX, animations before acting | P0 |
+| 2 | **Screenshot Timeline** | Visual history of every step for user review | P1 |
+| 3 | **Undo/Rollback** | "Go back" to undo last agent action | P1 |
+| 4 | **Progress Bar** | Real-time step-by-step progress with ETA | P0 |
+| 5 | **Error Recovery** | Auto-retry with backoff; VLM-assisted re-planning on failure | P0 |
+| 6 | **Task Templates** | Save successful task flows as reusable templates | P2 |
+| 7 | **Multi-language NLU** | Hindi/English query support via server LLM | P1 |
+| 8 | **Keyboard Shortcuts** | Ctrl+Shift+A to activate, Esc to pause | P1 |
+| 9 | **Context Carry-Forward** | "Continue from here" — server links new queries to old session | P0 |
+| 10 | **Agent Activity Log** | Downloadable audit log of all actions for compliance | P1 |
+| 11 | **Confidence Indicators** | Show confidence % for PII detection on redaction dashboard | P1 |
+| 12 | **Smart Form Detection** | Auto-detect forms and offer vault auto-fill | P1 |
+
+---
+
+## 10. Build Sequence — Phase-by-Phase
+
+> [!IMPORTANT]
+> Build bottom-up. Each phase is independently testable before moving to the next.
+
+```mermaid
+gantt
+    title Build Phases
+    dateFormat  X
+    axisFormat %s
+    
+    section Phase 1: Foundation
+    Extension Shell + Manifest V3           :p1, 0, 1
+    Basic Popup UI                          :p2, 0, 1
+    Service Worker skeleton                 :p3, 0, 1
+    
+    section Phase 2: DOM Engine
+    Content Script + DOM Extractor          :p4, 1, 2
+    Semantic element tagging                :p5, 1, 2
+    DOM Action Executor                     :p6, 1, 2
+    
+    section Phase 3: Privacy Engine
+    Regex PII Scanner                       :p7, 2, 3
+    BERT-NER in Web Worker                  :p8, 2, 3
+    BlazeFace in Web Worker                 :p9, 2, 3
+    Tesseract.js OCR                        :p10, 2, 3
+    Redaction + Token Mapping               :p11, 2, 3
+    
+    section Phase 4: Vision Engine
+    Screenshot capture pipeline             :p12, 3, 4
+    MobileViT screen classifier             :p13, 3, 4
+    Vision-based click coordinates          :p14, 3, 4
+    
+    section Phase 5: Server Core
+    FastAPI + WebSocket                     :p15, 4, 5
+    LLM loader (Qwen3-14B Q4)              :p16, 4, 5
+    VLM loader (Qwen2.5-VL-7B Q4)          :p17, 4, 5
+    Planning prompt engineering             :p18, 4, 5
+    
+    section Phase 6: Integration
+    Client-Server communication             :p19, 5, 6
+    Action execution loop                   :p20, 5, 6
+    Protocol engine                         :p21, 5, 6
+    
+    section Phase 7: Advanced Features
+    Tab Manager + visual markers            :p22, 6, 7
+    Vault system                            :p23, 6, 7
+    Session memory                          :p24, 6, 7
+    Dynamic obstacle handling               :p25, 6, 7
+    
+    section Phase 8: Polish
+    UI/UX refinement                        :p26, 7, 8
+    End-to-end demo task                    :p27, 7, 8
+    Performance optimization                :p28, 7, 8
+```
+
+### Phase Checklist
+
+| Phase | Deliverable | Verification |
+|:---|:---|:---|
+| **1. Foundation** | Extension loads in Chrome, popup opens, service worker runs | `chrome://extensions` shows loaded |
+| **2. DOM Engine** | Content script extracts DOM tree, executor can click/type | Click a button via console command |
+| **3. Privacy Engine** | PII detected + redacted in DOM text & screenshot | Test with page containing emails, names, faces |
+| **4. Vision Engine** | MobileViT classifies screen state; BlazeFace finds faces | Accuracy test on 10 sample pages |
+| **5. Server Core** | LLM generates valid JSON plans from sanitized input | Unit test: query → structured plan |
+| **6. Integration** | Full loop: query → plan → execute → verify | Complete a simple search task |
+| **7. Advanced** | Multi-tab, vault, memory, obstacle handling work | Complex multi-step task with popups |
+| **8. Polish** | Smooth UI, desktop notifs, error recovery | End-to-end demo: "Buy headphones on Flipkart" |
+
+---
+
+## 11. Evaluation Criteria Mapping
+
+| Criteria | Weight | Our Approach | Expected Score |
+|:---|:---|:---|:---|
+| **Accuracy of visual context** | 25% | MobileViT (screen classify) + VLM (Qwen2.5-VL-7B for grounding) + DOM extraction — triple-verified context | High |
+| **PII detection recall/precision** | 20% | 4-layer: Regex (structured) + BERT-NER (contextual) + BlazeFace (faces) + Tesseract OCR (text-in-images) | High |
+| **Precision of redaction** | 20% | Token-based replacement (reversible), pixel-level blackout for faces, DOM node masking | High |
+| **Client resource utilization** | 20% | All models <100 MB total; Web Workers (off main thread); WebGPU acceleration; IndexedDB caching | High |
+| **End-to-end latency** | 15% | DOM extraction <50ms; PII scan <300ms; Server round-trip ~2-3s; Total step: ~3-5s | Medium-High |
+
+---
+
+## 12. Technology Stack Summary
+
+| Layer | Technology |
+|:---|:---|
+| **Extension** | Chrome Manifest V3, JavaScript/TypeScript |
+| **Client ML Runtime** | ONNX Runtime Web (WebGPU), Transformers.js, Tesseract.js (WASM) |
+| **Client Vision** | MobileViT-XXS (ONNX), BlazeFace (MediaPipe) |
+| **Client NLP** | Xenova/bert-base-NER (ONNX INT8) |
+| **Client Storage** | chrome.storage.local, IndexedDB, Web Crypto API |
+| **Communication** | WebSocket (primary), REST (fallback) |
+| **Server Framework** | Python 3.11+, FastAPI, Uvicorn |
+| **Server LLM** | Qwen3-14B (4-bit AWQ via vLLM or transformers+bitsandbytes) |
+| **Server VLM** | Qwen2.5-VL-7B-Instruct (4-bit BnB) |
+| **Server State** | SQLite (sessions), JSON files (memory) |
+| **Deployment** | Google Colab (T4) + ngrok tunnel |
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Model Choices**: I've selected Qwen3-14B (LLM) and Qwen2.5-VL-7B (VLM) as the optimal fit for Colab T4 15GB. If you have access to better GPUs during SIH, we could use Qwen3-30B-A3B (MoE) or Qwen2.5-VL-72B for dramatically better results. Please confirm your GPU situation.
+
+> [!IMPORTANT]
+> **Two Colab Notebooks**: Running both LLM and VLM on a single T4 is very tight (10GB + 6GB = 16GB total). I recommend two separate Colab notebooks with ngrok tunnels. Alternatively, we could use a single notebook and load models alternately (higher latency). Which approach do you prefer?
+
+> [!WARNING]
+> **WebGPU Browser Support**: WebGPU is fully supported in Chrome 113+ but Firefox support is still experimental (behind a flag). For Firefox compatibility, we'll need WASM fallback. Is Chrome-first acceptable for the demo?
+
+## Open Questions
+
+1. **Demo Task**: What specific end-to-end task do you want to demonstrate at SIH? "Buy headphones on Flipkart" is good — any others?
+2. **Voice Input**: You mentioned voice input as a stretch goal. Should I include Web Speech API in the architecture, or skip for now?
+3. **Hosting during SIH**: Will you have internet access at the SIH venue for Colab, or should we plan for fully local server deployment?
+4. **Web Scraping Scope**: I've included DOM extraction (fast) + VLM extraction (fallback). Do you need dedicated crawling (e.g., scrape all products from multiple pages)?
+5. **UI Design**: Do you want a minimal side-panel UI or a more polished design with animations? (affects build time)

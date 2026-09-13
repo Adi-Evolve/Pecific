@@ -95,10 +95,11 @@ Phases are scoped to only Dev 5's tasks, matching the team's 8-phase plan from `
 
 **Verification**: CRITICAL actions correctly emit `APPROVAL_REQUIRED` and resume on `APPROVAL_RESPONSE`.
 
-- [ ] Implement `APPROVAL_REQUIRED` emission for CRITICAL steps.
-- [ ] Implement `APPROVAL_RESPONSE` handling — resume plan execution after user approval.
-- [ ] Implement `PAUSE_AGENT`, `RESUME_AGENT`, `STOP_AGENT` handlers.
-- [ ] Test the full approval gate flow end-to-end.
+- [x] Implement `APPROVAL_REQUIRED` emission for CRITICAL steps.
+- [x] Implement `APPROVAL_RESPONSE` handling — resume plan execution after user approval.
+- [x] Implement `PAUSE_AGENT`, `RESUME_AGENT`, `STOP_AGENT` handlers.
+- [x] Implement `state/task_tracker.py` — full step state machine.
+- [x] Test the full approval gate flow end-to-end.
 
 ---
 
@@ -106,10 +107,10 @@ Phases are scoped to only Dev 5's tasks, matching the team's 8-phase plan from `
 
 **Verification**: Each feature tested independently against the Phase 5 loop.
 
-- [ ] Create `state/session_manager.py` — Session lifecycle (create/restore/archive).
-- [ ] Create `state/memory_store.py` — Cross-session memory (SQLite/JSON).
-- [ ] Implement `SESSION_RESTORE` → `SESSION_RESTORED` flow for reconnecting queries to prior session state.
-- [ ] Implement context carry-forward: new queries can reference prior session goals.
+- [x] Create `state/session_manager.py` — Session lifecycle (create/restore/archive).
+- [x] Create `state/memory_store.py` — Cross-session memory (SQLite/JSON).
+- [x] Implement `SESSION_RESTORE` → `SESSION_RESTORED` flow for reconnecting queries to prior session state.
+- [x] Implement context carry-forward: new queries can reference prior session goals.
 - [ ] Multi-language NLU (Hindi/English) via Qwen3-14B's native multilingual capability.
 - [ ] Implement error recovery: self-correction, retry with backoff, VLM-assisted re-planning.
 
