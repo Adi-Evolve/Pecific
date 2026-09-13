@@ -1,0 +1,49 @@
+{
+  "url": "https://www.amazon.in",
+  "title": "Online Shopping site in India: Shop Online for Mobiles, Books, Watches...",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "scroll_x": 0,
+    "scroll_y": 0
+  },
+  "elements": [
+    {
+      "id": "e_search",
+      "tag": "INPUT",
+      "selector": "#twotabsearchtextbox",
+      "type": "text",
+      "interactive": true,
+      "role": "searchbox",
+      "text": null,
+      "placeholder": "Search Amazon.in",
+      "value": null,
+      "coordinates": [320, 24, 600, 38]
+    },
+    {
+      "id": "e_submit",
+      "tag": "INPUT",
+      "selector": "#nav-search-submit-button",
+      "type": "submit",
+      "interactive": true,
+      "role": "button",
+      "text": null,
+      "placeholder": null,
+      "value": "Go",
+      "coordinates": [925, 24, 45, 38]
+    },
+    {
+      "id": "e_signin",
+      "tag": "A",
+      "selector": "#nav-link-accountList",
+      "type": null,
+      "interactive": true,
+      "role": "link",
+      "text": "Hello, [TOKEN] Sign in",
+      "placeholder": null,
+      "value": null,
+      "coordinates": [50, 18, 200, 40]
+    }
+  ],
+  "forms": []
+}

@@ -1,0 +1,10 @@
+{
+  "has_email": true,
+  "has_password": true,
+  "has_phone": true,
+  "has_name": true,
+  "has_address": false,
+  "has_card_number": false,
+  "has_aadhaar": false,
+  "has_pan": false
+}
