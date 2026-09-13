@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are a browser automation planner for PrivacyLens. Given the user's goal and the current browser state, generate a structured execution plan.
 
 RULES:
-1. ALWAYS output valid JSON. NEVER output plain English. Every response must be a single JSON object.
+1. ALWAYS output valid JSON. NEVER output plain English or thinking tags. Every response must be a single JSON object. Do NOT use <think> tags.
 2. Each step MUST have: id, action, execution_mode, protocol_level, verify condition. Do not omit any field.
 3. For sensitive actions (purchase, login, delete, payment, account changes), set protocol_level = "CRITICAL".
 4. The DOM snapshot uses [TOKEN] placeholders for redacted PII. Work with tokens, not real data. Never attempt to infer real values.
@@ -201,6 +201,10 @@ def _repair_json(text: str) -> str:
     text = re.sub(r"\}\s*\{", "}, {", text)
     # Fix missing commas between array elements: "] [" -> "], ["
     text = re.sub(r"\]\s*\[", "], [", text)
+    # Remove control characters inside strings (newlines, tabs, etc.)
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    # Collapse multiple spaces
+    text = re.sub(r"  +", " ", text)
     # Remove any trailing text after the last }
     brace_end = text.rfind("}")
     if brace_end != -1:
@@ -209,8 +213,14 @@ def _repair_json(text: str) -> str:
 
 
 def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
-    """Extract JSON from LLM output, handling markdown fences and extra text."""
+    """Extract JSON from LLM output, handling thinking tags, markdown fences, and extra text."""
     text = raw.strip()
+
+    # Strip Qwen3 thinking tags</think>...</think>content
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Also handle cases where tags appear without closing
+    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+    text = text.strip()
 
     fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
     if fence_match:
@@ -231,9 +241,13 @@ def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
 
     # Attempt repair
     repaired = _repair_json(text)
-    data = json.loads(repaired)
-    data["session_id"] = session_id
-    return data
+    try:
+        data = json.loads(repaired)
+        data["session_id"] = session_id
+        return data
+    except json.JSONDecodeError as e:
+        logger.error("JSON repair failed: %s\nRepaired text (first 500): %s", e, repaired[:500])
+        raise
 
 
 def _has_screenshot_steps(plan: ActionPlan) -> bool:
