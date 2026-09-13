@@ -12,80 +12,34 @@
     "action": {
       "type": "string",
       "enum": [
-        "NAVIGATE",
-        "CLICK",
-        "TYPE",
-        "TYPE_FROM_VAULT",
-        "PRESS_KEY",
-        "HOVER",
-        "SCROLL",
-        "SELECT",
-        "WAIT",
-        "SCREENSHOT",
-        "EXTRACT",
-        "NEW_TAB",
-        "SWITCH_TAB",
-        "CLOSE_TAB",
-        "DISMISS_POPUP",
-        "CAPTCHA_HANDOFF",
-        "REPORT_RESULT"
+        "NAVIGATE", "CLICK", "TYPE", "TYPE_FROM_VAULT", "PRESS_KEY", "HOVER",
+        "SCROLL", "SELECT", "WAIT", "SCREENSHOT", "EXTRACT", "NEW_TAB",
+        "SWITCH_TAB", "CLOSE_TAB", "DISMISS_POPUP", "CAPTCHA_HANDOFF", "REPORT_RESULT"
       ]
     },
     "target": {
       "type": "object",
       "properties": {
-        "selector": { "type": "string", "description": "CSS selector for DOM target" },
-        "url": { "type": "string", "description": "Target URL for NAVIGATE action" },
-        "coordinates": {
-          "type": "array",
-          "items": { "type": "number" },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[x, y] pixel coordinates for VISION mode clicks"
-        },
-        "text": { "type": "string", "description": "Text matching hint for ambiguous selectors" },
-        "tab_id": { "type": "integer", "description": "Target tab ID for tab operations" },
+        "selector": { "type": "string" },
+        "url": { "type": "string" },
+        "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "text": { "type": "string" },
+        "tab_id": { "type": "integer" },
         "tab_purpose": { "type": "string" }
       }
     },
-    "value": {
-      "type": "string",
-      "description": "Text value to enter for TYPE action"
-    },
-    "key": {
-      "type": "string",
-      "description": "Key identifier for PRESS_KEY (e.g. Enter, Tab, Escape)"
-    },
-    "vault_key": {
-      "type": "string",
-      "description": "Credential key identifier for TYPE_FROM_VAULT (e.g. 'email', 'password', 'card_cvv')"
-    },
-    "execution_mode": {
-      "type": "string",
-      "enum": ["DOM", "VISION", "HYBRID"],
-      "default": "DOM"
-    },
-    "protocol_level": {
-      "type": "string",
-      "enum": ["SAFE", "CAUTION", "CRITICAL", "FORBIDDEN"],
-      "default": "SAFE"
-    },
-    "description": {
-      "type": "string",
-      "description": "Human-readable explanation of what this step does"
-    },
+    "value": { "type": "string" },
+    "key": { "type": "string" },
+    "vault_key": { "type": "string" },
+    "execution_mode": { "type": "string", "enum": ["DOM", "VISION", "HYBRID"], "default": "DOM" },
+    "protocol_level": { "type": "string", "enum": ["SAFE", "CAUTION", "CRITICAL", "FORBIDDEN"], "default": "SAFE" },
+    "description": { "type": "string" },
     "verify": {
       "type": "object",
       "required": ["method", "condition"],
       "properties": {
-        "method": {
-          "type": "string",
-          "enum": ["DOM_CHECK", "URL_CHECK", "SCREENSHOT"]
-        },
-        "condition": {
-          "type": "string",
-          "description": "Condition expression to confirm step succeeded"
-        }
+        "method": { "type": "string", "enum": ["DOM_CHECK", "URL_CHECK", "SCREENSHOT"] },
+        "condition": { "type": "string" }
       }
     },
     "fallback": {
@@ -96,14 +50,7 @@
         "reason": { "type": "string" }
       }
     },
-    "timeout_ms": {
-      "type": "integer",
-      "default": 5000,
-      "description": "Execution timeout in milliseconds"
-    },
-    "duration_ms": {
-      "type": "integer",
-      "description": "Duration for WAIT action in milliseconds"
-    }
+    "timeout_ms": { "type": "integer", "default": 5000 },
+    "duration_ms": { "type": "integer" }
   }
 }
