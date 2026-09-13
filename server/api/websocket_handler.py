@@ -215,6 +215,17 @@ async def _generate_plan_from_payload(ws: WebSocket, msg: WebSocketMessage, payl
 
     _plan_cache[session_id] = plan
 
+    # Log the full plan so it's visible in Colab even if client disconnects
+    print(f"\n{'='*60}", flush=True)
+    print(f"[PLAN] Generated plan for: {goal}", flush=True)
+    print(f"[PLAN] Chain of thought: {plan.plan.chain_of_thought[:200]}", flush=True)
+    print(f"[PLAN] Total steps: {plan.plan.total_steps}", flush=True)
+    for s in plan.plan.steps:
+        print(f"  Step {s.id}: {s.action.value} | {s.protocol_level} | {s.description}", flush=True)
+        if s.target and s.target.selector:
+            print(f"    target: {s.target.selector}", flush=True)
+    print(f"{'='*60}\n", flush=True)
+
     tracker = get_tracker(session_id)
     step_ids = [s.id for s in plan.plan.steps]
     tracker.initialize_plan(plan_id=f"plan_{session_id}", step_ids=step_ids)
