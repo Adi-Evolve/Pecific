@@ -191,6 +191,23 @@ def _build_prompt(
     return "\n\n".join(parts)
 
 
+def _repair_json(text: str) -> str:
+    """Attempt to fix common LLM JSON malformations."""
+    # Remove trailing commas before } or ]
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    # Remove // comments (LLM sometimes adds them)
+    text = re.sub(r"//.*$", "", text, flags=re.MULTILINE)
+    # Fix missing commas between array/object elements: "} {" -> "}, {"
+    text = re.sub(r"\}\s*\{", "}, {", text)
+    # Fix missing commas between array elements: "] [" -> "], ["
+    text = re.sub(r"\]\s*\[", "], [", text)
+    # Remove any trailing text after the last }
+    brace_end = text.rfind("}")
+    if brace_end != -1:
+        text = text[:brace_end + 1]
+    return text
+
+
 def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
     """Extract JSON from LLM output, handling markdown fences and extra text."""
     text = raw.strip()
@@ -204,7 +221,17 @@ def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
     if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
         text = text[brace_start:brace_end + 1]
 
-    data = json.loads(text)
+    # Try direct parse first
+    try:
+        data = json.loads(text)
+        data["session_id"] = session_id
+        return data
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt repair
+    repaired = _repair_json(text)
+    data = json.loads(repaired)
     data["session_id"] = session_id
     return data
 
