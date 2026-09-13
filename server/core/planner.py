@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are a browser automation planner for PrivacyLens. Given the user's goal and the current browser state, generate a structured execution plan.
 
 RULES:
-1. ALWAYS output valid JSON. NEVER output plain English. Every response must be a single JSON object.
+1. ALWAYS output valid JSON. NEVER output plain English or thinking tags. Every response must be a single JSON object. Do NOT use <think> tags.
 2. Each step MUST have: id, action, execution_mode, protocol_level, verify condition. Do not omit any field.
 3. For sensitive actions (purchase, login, delete, payment, account changes), set protocol_level = "CRITICAL".
 4. The DOM snapshot uses [TOKEN] placeholders for redacted PII. Work with tokens, not real data. Never attempt to infer real values.
@@ -191,9 +191,36 @@ def _build_prompt(
     return "\n\n".join(parts)
 
 
+def _repair_json(text: str) -> str:
+    """Attempt to fix common LLM JSON malformations."""
+    # Remove trailing commas before } or ]
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    # Remove // comments (LLM sometimes adds them)
+    text = re.sub(r"//.*$", "", text, flags=re.MULTILINE)
+    # Fix missing commas between array/object elements: "} {" -> "}, {"
+    text = re.sub(r"\}\s*\{", "}, {", text)
+    # Fix missing commas between array elements: "] [" -> "], ["
+    text = re.sub(r"\]\s*\[", "], [", text)
+    # Remove control characters inside strings (newlines, tabs, etc.)
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    # Collapse multiple spaces
+    text = re.sub(r"  +", " ", text)
+    # Remove any trailing text after the last }
+    brace_end = text.rfind("}")
+    if brace_end != -1:
+        text = text[:brace_end + 1]
+    return text
+
+
 def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
-    """Extract JSON from LLM output, handling markdown fences and extra text."""
+    """Extract JSON from LLM output, handling thinking tags, markdown fences, and extra text."""
     text = raw.strip()
+
+    # Strip Qwen3 thinking tags</think>...</think>content
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Also handle cases where tags appear without closing
+    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+    text = text.strip()
 
     fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
     if fence_match:
@@ -204,9 +231,23 @@ def _parse_llm_output(raw: str, session_id: str) -> dict[str, Any]:
     if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
         text = text[brace_start:brace_end + 1]
 
-    data = json.loads(text)
-    data["session_id"] = session_id
-    return data
+    # Try direct parse first
+    try:
+        data = json.loads(text)
+        data["session_id"] = session_id
+        return data
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt repair
+    repaired = _repair_json(text)
+    try:
+        data = json.loads(repaired)
+        data["session_id"] = session_id
+        return data
+    except json.JSONDecodeError as e:
+        logger.error("JSON repair failed: %s\nRepaired text (first 500): %s", e, repaired[:500])
+        raise
 
 
 def _has_screenshot_steps(plan: ActionPlan) -> bool:
@@ -271,15 +312,29 @@ async def generate_plan(
         {"role": "user", "content": user_prompt},
     ]
 
+    # Log the exact prompt being sent to the LLM
+    print(f"\n{'='*60}", flush=True)
+    print(f"[LLM] SYSTEM PROMPT:\n{SYSTEM_PROMPT}", flush=True)
+    print(f"[LLM] USER PROMPT:\n{user_prompt}", flush=True)
+    print(f"[LLM] Sending to model...", flush=True)
+    print(f"{'='*60}\n", flush=True)
+
     raw_output = await asyncio.to_thread(_call_llm, model, tokenizer, messages, settings)
-    logger.info("LLM raw output (first 200 chars): %s", raw_output[:200])
+
+    # Log the exact raw output from the LLM
+    print(f"\n{'='*60}", flush=True)
+    print(f"[LLM] RAW OUTPUT:\n{raw_output}", flush=True)
+    print(f"{'='*60}\n", flush=True)
 
     try:
         data = _parse_llm_output(raw_output, session_id)
         plan = ActionPlan(**data)
+        print(f"[LLM] PARSED SUCCESSFULLY: {plan.plan.total_steps} steps", flush=True)
     except Exception as e:
+        print(f"[LLM] PARSE FAILED: {e}", flush=True)
         logger.warning("First parse failed: %s — retrying with corrective prompt", e)
         plan = await _retry_with_corrective_prompt(messages, raw_output, session_id, settings)
+        print(f"[LLM] RETRY SUCCEEDED: {plan.plan.total_steps} steps", flush=True)
 
     if _has_screenshot_steps(plan) and redacted_screenshot:
         logger.info("Plan has SCREENSHOT steps — calling VLM for re-planning")
