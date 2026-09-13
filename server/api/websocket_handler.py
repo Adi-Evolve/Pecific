@@ -40,7 +40,11 @@ async def websocket_endpoint(ws: WebSocket):
 
     try:
         while True:
-            raw = await ws.receive_text()
+            try:
+                raw = await ws.receive_text()
+            except (WebSocketDisconnect, RuntimeError):
+                logger.info("WebSocket closed during receive: %s", session_id)
+                break
             try:
                 data: dict[str, Any] = json.loads(raw)
             except json.JSONDecodeError:
