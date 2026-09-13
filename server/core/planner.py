@@ -298,15 +298,29 @@ async def generate_plan(
         {"role": "user", "content": user_prompt},
     ]
 
+    # Log the exact prompt being sent to the LLM
+    print(f"\n{'='*60}", flush=True)
+    print(f"[LLM] SYSTEM PROMPT:\n{SYSTEM_PROMPT}", flush=True)
+    print(f"[LLM] USER PROMPT:\n{user_prompt}", flush=True)
+    print(f"[LLM] Sending to model...", flush=True)
+    print(f"{'='*60}\n", flush=True)
+
     raw_output = await asyncio.to_thread(_call_llm, model, tokenizer, messages, settings)
-    logger.info("LLM raw output (first 200 chars): %s", raw_output[:200])
+
+    # Log the exact raw output from the LLM
+    print(f"\n{'='*60}", flush=True)
+    print(f"[LLM] RAW OUTPUT:\n{raw_output}", flush=True)
+    print(f"{'='*60}\n", flush=True)
 
     try:
         data = _parse_llm_output(raw_output, session_id)
         plan = ActionPlan(**data)
+        print(f"[LLM] PARSED SUCCESSFULLY: {plan.plan.total_steps} steps", flush=True)
     except Exception as e:
+        print(f"[LLM] PARSE FAILED: {e}", flush=True)
         logger.warning("First parse failed: %s — retrying with corrective prompt", e)
         plan = await _retry_with_corrective_prompt(messages, raw_output, session_id, settings)
+        print(f"[LLM] RETRY SUCCEEDED: {plan.plan.total_steps} steps", flush=True)
 
     if _has_screenshot_steps(plan) and redacted_screenshot:
         logger.info("Plan has SCREENSHOT steps — calling VLM for re-planning")
