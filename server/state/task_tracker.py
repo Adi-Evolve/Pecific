@@ -112,8 +112,6 @@ class TaskTracker:
 
         if new_state == StepState.RUNNING:
             record.attempts += 1
-        elif new_state == StepState.FAILED:
-            record.last_error = None  # set via set_error()
         elif new_state == StepState.BLOCKED_APPROVAL:
             record.approval_granted = False
 

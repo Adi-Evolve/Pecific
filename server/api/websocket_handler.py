@@ -385,7 +385,12 @@ async def _handle_step_execution_result(ws: WebSocket, msg: WebSocketMessage):
         await _dispatch_next_step_from_tracker(ws, msg.session_id)
         return
 
-    tracker.mark_failed(step_id, error=error_msg, error_code=error_code)
+    # --- Error routing by error_code (not string matching) ---
+    # For CRITICAL errors, mark as BLOCKED_APPROVAL instead of FAILED
+    if error_code in ("CAPTCHA_TRIGGERED", "AUTH_REQUIRED"):
+        tracker.mark_blocked_approval(step_id)
+    else:
+        tracker.mark_failed(step_id, error=error_msg, error_code=error_code)
 
     if error_code == "SELECTOR_NOT_FOUND":
         if screenshot:
@@ -449,7 +454,6 @@ async def _handle_step_execution_result(ws: WebSocket, msg: WebSocketMessage):
                 logger.warning("VLM obstacle detection failed: %s", e)
 
     elif error_code == "CAPTCHA_TRIGGERED":
-        tracker.mark_blocked_approval(step_id)
         await _safe_send(ws, {
             "type": "APPROVAL_REQUIRED",
             "session_id": msg.session_id,
@@ -483,7 +487,6 @@ async def _handle_step_execution_result(ws: WebSocket, msg: WebSocketMessage):
         return
 
     elif error_code == "AUTH_REQUIRED":
-        tracker.mark_blocked_approval(step_id)
         await _safe_send(ws, {
             "type": "APPROVAL_REQUIRED",
             "session_id": msg.session_id,
@@ -660,4 +663,16 @@ async def _handle_stop_agent(ws: WebSocket, msg: WebSocketMessage):
         "type": "TASK_COMPLETE",
         "session_id": msg.session_id,
         "payload": {"status": "stopped", "summary": "Agent stopped by user"},
+    })
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _send_error(ws: WebSocket, code: str, message: str, session_id: str = "unknown"):
+    await _safe_send(ws, {
+        "type": "ERROR",
+        "session_id": session_id,
+        "payload": {"code": code, "message": message},
     })

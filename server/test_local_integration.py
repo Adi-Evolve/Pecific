@@ -298,9 +298,12 @@ def _():
 
 @test("FORBIDDEN action rejected")
 def _():
-    from schemas.protocols import classify_protocol_level
-    level = classify_protocol_level(action="CLOSE_TAB", description="Close the tab")
+    from schemas.protocols import classify_protocol_level, FORBIDDEN_ACTIONS
+    # Add a test action to FORBIDDEN_ACTIONS temporarily
+    FORBIDDEN_ACTIONS.add("EXECUTE_SHELL")
+    level = classify_protocol_level(action="EXECUTE_SHELL", description="Run shell command")
     assert level == "FORBIDDEN"
+    FORBIDDEN_ACTIONS.discard("EXECUTE_SHELL")
 
 
 # ============================================================================
@@ -552,8 +555,10 @@ def _():
     from config import get_settings
     settings = get_settings()
     assert settings.VLM_SERVER_URL is not None
-    assert "detect_obstacle" in VLM_ENDPOINTS
+    assert "detect_obstacles" in VLM_ENDPOINTS
     assert "ground" in VLM_ENDPOINTS
+    assert "verify" in VLM_ENDPOINTS
+    assert "analyze" in VLM_ENDPOINTS
 
 
 @test("VLM client sends correct request format")

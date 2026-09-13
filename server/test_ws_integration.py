@@ -12,7 +12,7 @@ import json
 import websockets
 
 
-WS_URL = "wss://unsoporiferous-ruinously-gertie.ngrok-free.dev/ws/browser-agent"  # Replace with your ngrok URL
+WS_URL = "ws://127.0.0.1:8000/ws/browser-agent"  # Local test
 SESSION_ID = "session_1726052000100"
 
 
