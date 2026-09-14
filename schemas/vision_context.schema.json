@@ -5,12 +5,35 @@
   "properties": {
     "screen_type": {
       "type": "string",
-      "enum": ["search_results", "product_page", "checkout", "login_page", "cart", "form", "unknown"]
+      "pattern": "^(search_results|product_page|checkout|login_page|cart|form|unknown|model_class_[0-9]+)$"
     },
     "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
     "confidence_basis": {
       "type": "string",
       "enum": ["mobilevit_image_class", "screen_class"]
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "visual_density": { "type": "string", "enum": ["low", "medium", "high"] },
+        "has_active_modal": { "type": "boolean" },
+        "has_sticky_footer": { "type": "boolean" },
+        "canvas_heavy": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "detected_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "bbox"],
+        "properties": {
+          "type": { "type": "string" },
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "label": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
     },
     "faces_detected": {
       "type": "array",
@@ -20,7 +43,8 @@
         "properties": {
           "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
           "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "pii_regions": {
@@ -32,10 +56,27 @@
           "type": { "type": "string", "enum": ["face", "text_pii"] },
           "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
           "label": { "type": "string" }
-        }
+        },
+        "additionalProperties": false
+      }
+    },
+    "visual_pii_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "bbox"],
+        "properties": {
+          "type": { "type": "string" },
+          "bbox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "label": { "type": "string" }
+        },
+        "additionalProperties": false
       }
     },
     "backend": { "type": "string", "enum": ["webgpu", "wasm"] },
-    "processing_ms": { "type": "number" }
-  }
+    "processing_ms": { "type": "number" },
+    "predicted_class": { "type": "integer", "minimum": 0 },
+    "model_output": { "type": "array", "items": { "type": "number" } }
+  },
+  "additionalProperties": false
 }

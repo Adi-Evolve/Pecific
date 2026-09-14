@@ -5,6 +5,7 @@
   "description": "Autonomous browser agent that redacts PII locally.",
   "permissions": [
     "activeTab",
+    "tabs",
     "scripting",
     "storage",
     "notifications",

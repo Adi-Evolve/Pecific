@@ -101,7 +101,10 @@ async function classifyScreen(imageBitmap) {
   let bestIdx = 0;
   for (let i = 1; i < probs.length; i++) if (probs[i] > probs[bestIdx]) bestIdx = i;
   return {
-    screen_type: "unknown",
+    // The MobileViT checkpoint does not contain a screen-label vocabulary.
+    // Preserve the model's winning class without pretending it maps to a
+    // semantic page type.
+    screen_type: `model_class_${bestIdx}`,
     confidence: probs[bestIdx],
     confidence_basis: "mobilevit_image_class",
     predicted_class: bestIdx,
@@ -109,12 +112,29 @@ async function classifyScreen(imageBitmap) {
   };
 }
 
-function mergeVisionContext({ faces_detected, screen_type, confidence, backend, processing_ms, textPiiRegions = [] }) {
+function mergeVisionContext({
+  faces_detected,
+  screen_type,
+  confidence,
+  confidence_basis,
+  backend,
+  processing_ms,
+  textPiiRegions = []
+}) {
   const pii_regions = [
     ...faces_detected.map(f => ({ type: "face", bbox: f.bbox })),
     ...textPiiRegions.map(r => ({ type: "text_pii", bbox: r.bbox, label: r.label }))
   ];
-  return { screen_type, confidence, faces_detected, pii_regions, backend, processing_ms };
+  return {
+    screen_type,
+    confidence,
+    confidence_basis,
+    faces_detected,
+    pii_regions,
+    visual_pii_regions: pii_regions,
+    backend,
+    processing_ms
+  };
 }
 
 self.onmessage = async (e) => {
@@ -139,6 +159,10 @@ if (type === "DEBUG_NAMES") {
     }
   }
 
+  if (typeof self !== "undefined") {
+    self.__visionWorkerTestHooks = { classifyScreen, softmax };
+  }
+
   if (type === "DETECT") {
     try {
       const bitmap = await createImageBitmap(e.data.imageData);
@@ -154,10 +178,23 @@ if (type === "DEBUG_NAMES") {
       const start = performance.now();
       const bitmap = await createImageBitmap(e.data.imageData);
       const faces_detected = await runInference(bitmap, bitmap.width, bitmap.height);
-      const { screen_type, confidence, predicted_class, model_output } = await classifyScreen(bitmap);
+      const {
+        screen_type,
+        confidence,
+        confidence_basis,
+        predicted_class,
+        model_output
+      } = await classifyScreen(bitmap);
       const processing_ms = Math.round(performance.now() - start);
       const vision_context = {
-        ...mergeVisionContext({ faces_detected, screen_type, confidence, backend, processing_ms }),
+        ...mergeVisionContext({
+          faces_detected,
+          screen_type,
+          confidence,
+          confidence_basis,
+          backend,
+          processing_ms
+        }),
         predicted_class,
         model_output
       };

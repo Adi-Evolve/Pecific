@@ -51,10 +51,27 @@ async function getCredential(fieldName) {
 async function getManifest() {
   const record = await chrome.storage.local.get("vault_data");
   const stored = record.vault_data || {};
-  if (!isUnlocked()) return { fields: {}, locked: true };
-  const fields = {};
-  for (const key of Object.keys(stored)) fields[key] = true;
-  return { fields, locked: false };
+  if (!isUnlocked()) {
+    return {
+      has_email: false,
+      has_password: false,
+      has_phone: false,
+      has_card: false,
+      has_aadhaar: false,
+      has_pan: false,
+      locked: true
+    };
+  }
+  const available = new Set(Object.keys(stored).map((key) => key.toLowerCase()));
+  return {
+    has_email: available.has("email"),
+    has_password: available.has("password"),
+    has_phone: available.has("phone"),
+    has_card: available.has("card"),
+    has_aadhaar: available.has("aadhaar"),
+    has_pan: available.has("pan"),
+    locked: false
+  };
 }
 
 export { unlockVault, lockVault, isUnlocked, setCredential, getCredential, getManifest };
