@@ -130,6 +130,7 @@ export interface VaultManifest {
   has_card?: boolean;
   has_aadhaar?: boolean;
   has_pan?: boolean;
+  locked?: boolean;
   tokens_available?: string[];
   tokens_count?: number;
   token_types?: Record<string, string>;

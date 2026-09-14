@@ -9,10 +9,29 @@ import {
   verifyZeroEgress, 
   resetSessionVault 
 } from './workers/privacy-client.js';
+import {
+  unlockVault,
+  lockVault,
+  isUnlocked,
+  setCredential,
+  getCredential,
+  getManifest
+} from './vault/vault-manager.js';
+import {
+  createAgentTab,
+  switchAgentTab,
+  closeAgentTab,
+  initializeRegistry,
+  attachTabLifecycleListeners,
+  isAgentTab
+} from './tab/tab-manager.js';
 
 console.log("iSIH Agent Service Worker Registered with PrivacyLens Engine.");
 
 let currentSessionId = 'session_' + Date.now();
+
+initializeRegistry().catch((error) => console.error('[SW] Tab registry initialization failed:', error));
+attachTabLifecycleListeners();
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
@@ -89,15 +108,18 @@ async function handleServerMessage(msg) {
       break;
     case 'NEXT_STEP':
       console.log('[SW] Executing Next Step:', msg.payload?.step?.action);
-      // Route to Dev 2 content script
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'EXECUTE_ACTION',
-            payload: msg.payload
-          });
+      {
+        const step = msg.payload?.step || msg.payload?.action || {};
+        const tabId = step.target?.tab_id ?? step.tab_id;
+        if (!isAgentTab(tabId)) {
+          console.error('[SW] Refusing to dispatch agent step to an unregistered agent tab:', tabId);
+          break;
         }
-      });
+        chrome.tabs.sendMessage(tabId, {
+          type: 'EXECUTE_ACTION',
+          payload: msg.payload
+        }).catch((error) => console.error('[SW] Agent step dispatch failed:', error));
+      }
       break;
     case 'APPROVAL_REQUIRED':
       console.log('[SW] Approval Required for:', msg.payload?.description);
@@ -217,19 +239,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           // 1.5 Dev 4 Vision Analysis for Face Bounding Boxes
           let faceBBs = [];
+          let visionContext = null;
           if (screenshot) {
             try {
               const res = await fetch(screenshot);
               const blob = await res.blob();
               if (!self.visionWorker) {
-                self.visionWorker = new Worker('workers/vision-worker.js');
+                self.visionWorker = new Worker(chrome.runtime.getURL('workers/vision-worker.js'));
                 self.visionWorker.postMessage({
                   type: 'INIT',
-                  faceModelPath: 'models/blazeface.onnx',
-                  screenModelPath: 'models/mobilevit_xxs.onnx'
+                  faceModelPath: chrome.runtime.getURL('workers/models/blazeface.onnx'),
+                  screenModelPath: chrome.runtime.getURL('workers/models/mobilevit_xxs.onnx')
                 });
               }
-              const visionContext = await new Promise((resolve) => {
+              const visionResult = await new Promise((resolve) => {
                 const listener = (e) => {
                   if (e.data.type === 'DETECT_OK' || e.data.type === 'ANALYZE_SCREEN_OK') {
                     self.visionWorker.removeEventListener('message', listener);
@@ -243,8 +266,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 self.visionWorker.postMessage({ type: 'ANALYZE_SCREEN', imageData: blob });
               });
               
-              if (visionContext && visionContext.vision_context?.faces_detected) {
-                faceBBs = visionContext.vision_context.faces_detected.map(f => f.bbox);
+              if (visionResult?.vision_context) {
+                visionContext = visionResult.vision_context;
+                if (visionContext.faces_detected) {
+                  faceBBs = visionContext.faces_detected.map(f => f.bbox);
+                }
               }
             } catch (err) {
               console.warn('[SW] Vision Analysis failed:', err.message);
@@ -260,6 +286,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           // 3. Broadcast updated privacy telemetry to UI dashboard (Popup + Sidepanel)
           broadcastTelemetry(privacyResult.telemetry);
+          const vaultManifest = await getManifest();
 
           console.log(`[SW] Privacy Sanitize Complete: ${privacyResult.tokenManifest.total_tokens} tokens masked. Zero Egress: ${privacyResult.zeroEgressProof.safe}`);
 
@@ -273,6 +300,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               error: `Zero-egress verification failed: ${leakCount} plaintext secret(s) leaked. Payload withheld.`,
               sessionId: currentSessionId,
               telemetry: privacyResult.telemetry,
+              vaultManifest,
               zeroEgressProof: privacyResult.zeroEgressProof,
             });
             return;
@@ -301,7 +329,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             payload: {
               query: message.payload?.query,
               url: rawDOM.url,
-              viewport: rawDOM.viewport
+              viewport: rawDOM.viewport,
+              vision_context: visionContext
             }
           });
 
@@ -311,7 +340,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             payload: {
               success: true,
               sanitized_dom: privacyResult.sanitizedDOM,
-              vault_manifest: privacyResult.tokenManifest,
+              vault_manifest: vaultManifest,
+              token_manifest: privacyResult.tokenManifest,
               redacted_screenshot: privacyResult.redactedScreenshot || null
             }
           });
@@ -359,7 +389,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
           }
           const token = message.payload?.token;
-          const rawValue = resolveVaultToken(token, reqSessionId);
+          const vaultKey = message.payload?.vault_key || token;
+          const rawValue = vaultKey.startsWith('[')
+            ? resolveVaultToken(vaultKey, reqSessionId)
+            : (isUnlocked() ? await getCredential(vaultKey) : null);
           console.log(`[SW] Local token resolution for ${token}: ${rawValue ? 'SUCCESS' : 'NOT_FOUND'}`);
           sendResponse({
             success: true,
@@ -367,6 +400,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             token,
             value: rawValue, // Kept strictly local for TYPE_FROM_VAULT
           });
+          break;
+        }
+
+        case 'VAULT_UNLOCK': {
+          await unlockVault(message.payload?.passphrase || '');
+          sendResponse({ success: true, status: 'unlocked', manifest: await getManifest() });
+          break;
+        }
+
+        case 'VAULT_LOCK': {
+          lockVault();
+          sendResponse({ success: true, status: 'locked' });
+          break;
+        }
+
+        case 'VAULT_SET_CREDENTIAL': {
+          if (!isUnlocked()) throw new Error('Vault is locked');
+          await setCredential(message.payload?.fieldName, message.payload?.value);
+          sendResponse({ success: true, status: 'stored', manifest: await getManifest() });
+          break;
+        }
+
+        case 'VAULT_MANIFEST': {
+          sendResponse({ success: true, manifest: await getManifest() });
+          break;
+        }
+
+        case 'TAB_ACTION': {
+          const action = message.payload?.action;
+          let result;
+          if (action === 'NEW_TAB') {
+            result = await createAgentTab({
+              url: message.payload?.url,
+              purpose: message.payload?.purpose,
+              windowId: message.payload?.windowId
+            });
+          } else if (action === 'SWITCH_TAB') {
+            result = await switchAgentTab(message.payload?.tab_id);
+          } else if (action === 'CLOSE_TAB') {
+            result = await closeAgentTab(message.payload?.tab_id);
+          } else {
+            throw new Error(`Unsupported tab action: ${action}`);
+          }
+          sendResponse({ success: true, result });
           break;
         }
 
@@ -444,4 +521,3 @@ if (chrome.sidePanel) {
     .setPanelBehavior({ openPanelOnActionClick: false })
     .catch((error) => console.error(error));
 }
-

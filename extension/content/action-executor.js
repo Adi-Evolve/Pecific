@@ -218,7 +218,29 @@
     },
 
     TYPE_FROM_VAULT(step) {
-      return notImplemented('TYPE_FROM_VAULT', 'depends on Dev4 vault module — not built yet');
+      const el = resolveTarget(step.target);
+      if (!el) return { success: false, error: 'target element not found' };
+      const vaultKey = step.vault_key || step.target?.vault_key;
+      if (!vaultKey) return { success: false, error: 'TYPE_FROM_VAULT requires vault_key' };
+
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'RESOLVE_TOKEN',
+          payload: { token: vaultKey, vault_key: vaultKey }
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          if (!response?.success || typeof response.value !== 'string') {
+            resolve({ success: false, error: response?.error || 'vault value unavailable' });
+            return;
+          }
+          el.focus();
+          setNativeValue(el, response.value);
+          resolve({ success: true });
+        });
+      });
     },
 
     PRESS_KEY(step) {
@@ -293,13 +315,13 @@
     },
 
     NEW_TAB(step) {
-      return notImplemented('NEW_TAB', 'depends on Dev4 tab-manager — not built yet');
+      return requestTabAction('NEW_TAB', step);
     },
     SWITCH_TAB(step) {
-      return notImplemented('SWITCH_TAB', 'depends on Dev4 tab-manager — not built yet');
+      return requestTabAction('SWITCH_TAB', step);
     },
     CLOSE_TAB(step) {
-      return notImplemented('CLOSE_TAB', 'depends on Dev4 tab-manager — not built yet');
+      return requestTabAction('CLOSE_TAB', step);
     },
 
     DISMISS_POPUP(step) {
@@ -312,6 +334,28 @@
       return notImplemented('REPORT_RESULT', 'Phase 5 scope — service worker STEP_RESULT wiring (Dev1) not built yet');
     },
   };
+
+  function requestTabAction(action, step) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        type: 'TAB_ACTION',
+        payload: {
+          action,
+          tab_id: step.target?.tab_id || step.tab_id,
+          url: step.target?.url || step.url,
+          purpose: step.target?.tab_purpose || step.tab_purpose
+        }
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(response?.success
+          ? { success: true, result: response.result }
+          : { success: false, error: response?.error || `tab action failed: ${action}` });
+      });
+    });
+  }
 
   // ---- verification ------------------------------------------------------
 

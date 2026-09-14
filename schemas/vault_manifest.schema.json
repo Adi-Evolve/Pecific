@@ -1,23 +1,15 @@
 {
   "$id": "vault_manifest.schema.json",
   "type": "object",
-  "required": ["fields"],
+  "required": ["has_email", "has_password", "has_phone", "has_card", "has_aadhaar", "has_pan", "locked"],
   "properties": {
-    "fields": {
-      "type": "object",
-      "description": "Boolean presence flags only. Server sees availability, never values.",
-      "properties": {
-        "email": { "type": "boolean" },
-        "password": { "type": "boolean" },
-        "phone": { "type": "boolean" },
-        "name": { "type": "boolean" },
-        "address": { "type": "boolean" }
-      },
-      "additionalProperties": { "type": "boolean" }
-    },
-    "locked": {
-      "type": "boolean",
-      "description": "True if vault is passphrase-locked and unavailable this session."
-    }
-  }
+    "has_email": { "type": "boolean" },
+    "has_password": { "type": "boolean" },
+    "has_phone": { "type": "boolean" },
+    "has_card": { "type": "boolean" },
+    "has_aadhaar": { "type": "boolean" },
+    "has_pan": { "type": "boolean" },
+    "locked": { "type": "boolean" }
+  },
+  "additionalProperties": false
 }
