@@ -26,8 +26,55 @@
     extractSnapshot: () => extractor.extractSnapshot(),
   };
   window.__actionExecutor = {
-    execute: (step) => executor.execute(step),
+    execute: (step) => executeAndReport(step),
   };
+
+  /**
+   * Phase 5: runs the action, then reports the outcome back to the service
+   * worker as a STEP_RESULT message (matching StepResultPayload from
+   * agent_message.schema.ts), so both the console helper and the real
+   * EXECUTE_ACTION message path go through the same reporting logic.
+   */
+  async function executeAndReport(rawStep) {
+    let result;
+    try {
+      result = await executor.execute(rawStep);
+    } catch (err) {
+      result = {
+        step_id: rawStep?.step_id ?? rawStep?.id,
+        action: rawStep?.action,
+        success: false,
+        error: String(err),
+      };
+    }
+
+    reportStepResult(result);
+    return result;
+  }
+
+  function reportStepResult(result) {
+    // Best-effort fresh snapshot so the planner sees post-action DOM state,
+    // not just whether the action itself succeeded. Never let a snapshot
+    // failure block sending the result.
+    let domSnapshot;
+    try {
+      domSnapshot = extractor.extractSnapshot();
+    } catch (err) {
+      console.warn('[dev2] could not attach post-action snapshot to STEP_RESULT:', err);
+    }
+
+    const payload = {
+      success: result.success,
+      step_id: result.step_id,
+      action: result.action,
+      error: result.error,
+      domSnapshot,
+    };
+
+    chrome.runtime.sendMessage({ type: 'STEP_RESULT', payload }).catch((err) => {
+      console.warn('[dev2] failed to relay STEP_RESULT to service worker:', err);
+    });
+  }
 
   /**
    * Message listener — this is how the service worker (Dev1) will eventually
@@ -49,9 +96,6 @@
     if (message && message.type === 'EXECUTE_ACTION') {
       // Dev1's service worker sends { type: 'EXECUTE_ACTION', payload: msg.payload }
       // where msg.payload is a NextStepPayload: { step?, actionId?, action? }.
-      // Our own console/testing helper (window.__actionExecutor.execute) calls
-      // executor.execute() directly and never goes through this listener, so
-      // this fallback chain only needs to serve the real Dev1 -> Dev2 path.
       const rawStep = message.payload?.step
         ?? message.payload?.action
         ?? message.payload
@@ -62,7 +106,7 @@
         return true;
       }
 
-      executor.execute(rawStep)
+      executeAndReport(rawStep)
         .then((result) => sendResponse({ ok: true, result }))
         .catch((err) => sendResponse({ ok: false, error: String(err) }));
       return true;
