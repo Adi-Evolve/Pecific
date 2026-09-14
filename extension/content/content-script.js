@@ -71,9 +71,17 @@
       domSnapshot,
     };
 
-    chrome.runtime.sendMessage({ type: 'STEP_RESULT', payload }).catch((err) => {
-      console.warn('[dev2] failed to relay STEP_RESULT to service worker:', err);
-    });
+    try {
+      chrome.runtime.sendMessage({ type: 'STEP_RESULT', payload }).catch((err) => {
+        console.warn('[dev2] failed to relay STEP_RESULT to service worker:', err);
+      });
+    } catch (err) {
+      // chrome.runtime.sendMessage can throw synchronously (not just reject)
+      // when the extension context has been invalidated (e.g. extension was
+      // reloaded mid-execution). Never let this crash the caller's actual
+      // action result — reporting is best-effort, execution isn't.
+      console.warn('[dev2] could not relay STEP_RESULT, context likely invalidated:', err);
+    }
   }
 
   /**

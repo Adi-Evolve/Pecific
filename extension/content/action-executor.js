@@ -119,6 +119,68 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Phase 6 — smart wait: resolves once the DOM has stopped mutating for
+   * `quietMs`, or after `timeoutMs` regardless (never hangs indefinitely).
+   * Replaces blindly guessing a fixed delay after actions that may trigger
+   * async page/AJAX changes.
+   */
+  function waitForDomSettled(timeoutMs = 3000, quietMs = 300) {
+    return new Promise((resolve) => {
+      let quietTimer = null;
+      let done = false;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        observer.disconnect();
+        clearTimeout(quietTimer);
+        clearTimeout(hardTimeout);
+        resolve();
+      };
+
+      const observer = new MutationObserver(() => {
+        clearTimeout(quietTimer);
+        quietTimer = setTimeout(finish, quietMs);
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+      // Start the quiet timer immediately in case nothing mutates at all.
+      quietTimer = setTimeout(finish, quietMs);
+      const hardTimeout = setTimeout(finish, timeoutMs);
+    });
+  }
+
+  /**
+   * Phase 6 — retry-with-backoff: retries a handler only when it failed for
+   * the specific, transient reason "target element not found" (e.g. content
+   * hasn't rendered yet). Bounded by step.timeout_ms (defaults to 5000ms,
+   * same default as action.schema.json) rather than a fixed attempt count,
+   * so it adapts to however long the caller says is acceptable.
+   */
+  async function executeWithRetry(step) {
+    const timeoutMs = step.timeout_ms || 5000;
+    const start = Date.now();
+    let attempt = 0;
+    let result;
+
+    while (true) {
+      attempt += 1;
+      result = await handlers[step.action](step);
+
+      if (result.success || result.error !== 'target element not found') {
+        return result;
+      }
+
+      const elapsed = Date.now() - start;
+      const backoff = Math.min(300 * 2 ** (attempt - 1), 2000);
+      if (elapsed + backoff >= timeoutMs) {
+        return result; // out of time — return the last failure as-is
+      }
+      await wait(backoff);
+    }
+  }
+
   function notImplemented(action, reason) {
     return { success: false, error: `NOT_IMPLEMENTED: ${action} — ${reason}` };
   }
@@ -291,7 +353,17 @@
     }
 
     const before = window.location.href;
-    const result = await handler(step);
+    const result = await executeWithRetry(step);
+
+    // Smart wait: give the DOM a chance to settle after actions that
+    // commonly trigger async re-render (AJAX, client-side routing) before
+    // we run verification — instead of guessing a fixed delay. NAVIGATE is
+    // excluded: it unloads this content script entirely, so there's nothing
+    // here left to wait on.
+    if (result.success && (step.action === 'CLICK' || step.action === 'SELECT')) {
+      await waitForDomSettled(Math.min(step.timeout_ms || 3000, 3000));
+    }
+
     const after = window.location.href;
 
     const verification = runVerify(step.verify);
