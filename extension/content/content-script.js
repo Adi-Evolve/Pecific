@@ -47,7 +47,22 @@
     }
 
     if (message && message.type === 'EXECUTE_ACTION') {
-      executor.execute(message.step)
+      // Dev1's service worker sends { type: 'EXECUTE_ACTION', payload: msg.payload }
+      // where msg.payload is a NextStepPayload: { step?, actionId?, action? }.
+      // Our own console/testing helper (window.__actionExecutor.execute) calls
+      // executor.execute() directly and never goes through this listener, so
+      // this fallback chain only needs to serve the real Dev1 -> Dev2 path.
+      const rawStep = message.payload?.step
+        ?? message.payload?.action
+        ?? message.payload
+        ?? message.step;
+
+      if (!rawStep) {
+        sendResponse({ ok: false, error: 'EXECUTE_ACTION received with no step data' });
+        return true;
+      }
+
+      executor.execute(rawStep)
         .then((result) => sendResponse({ ok: true, result }))
         .catch((err) => sendResponse({ ok: false, error: String(err) }));
       return true;
