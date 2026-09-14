@@ -1,6 +1,6 @@
 """
 redact_image_helper.py — Image Blackout, Face & Profile Avatar Redaction Engine
-PrivacyLens Privacy Engine (Dev 3 — R3)
+Pecific Privacy Engine (Dev 3 — R3)
 
 Applies visual blackout to real screenshots:
 1. Detects faces via OpenCV Haar Cascade classifier (with safety padding)

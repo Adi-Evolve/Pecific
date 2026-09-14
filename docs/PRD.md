@@ -1,8 +1,8 @@
-# PrivacyLens (Pecific) — Product Requirements Document (PRD)
+# Pecific — Product Requirements Document (PRD)
 
 ## 1. Executive Summary
 - **Hackathon & Problem:** Smart India Hackathon (SIH) 2024 / Problem Statement **PS26171**: *On-device Visual Perception for Light-weight Browser Agents*.  
-- **Product Name:** **PrivacyLens** (Pecific Browser Agent)  
+- **Product Name:** **Pecific** (Privacy-Preserving Browser Agent)  
 - **Vision:** An enterprise-grade, privacy-preserving browser extension agent that automates complex web workflows by executing visual perception, sensitive data detection, and PII redaction **entirely on-device** (client-side in the browser), sending only structurally preserved, sanitized DOM representations and redacted screenshots to a lightweight cloud reasoning server.
 
 ---
@@ -13,7 +13,7 @@ Automating complex web tasks (search, filling forms, job applications, checkout)
 - **Regulatory Violations:** Leaks personal identifiable information (PII) under GDPR, India's DPDP Act 2023, and HIPAA (Aadhaar, PAN, emails, phone numbers, medical records, financial cards).
 - **Latency & Bandwidth Overhead:** Streaming high-resolution, uncompressed screenshots over the wire increases round-trip latency and token costs.
 
-**The PrivacyLens Solution:**
+**The Pecific Solution:**
 1. **On-Device Visual Perception:** Run lightweight vision models (**TinyViT / MobileViT** and **BlazeFace**) via WebGPU / ONNX Runtime Web directly within the browser worker.
 2. **On-Device Privacy Engine:** A 4-stage pipeline (Regex, NER, DOM heuristics, OCR fallback) that tokenizes sensitive data into semantic handles (e.g., `[EMAIL_1]`, `[PASSWORD_FIELD]`, `[CARD_1]`, `[OTP_1]`).
 3. **Visual Blackout Guarantee:** Overlays solid black (`#000000`) fill rectangles over all faces, avatars, and sensitive text regions before any image data leaves the device.

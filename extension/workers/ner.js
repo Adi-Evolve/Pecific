@@ -1,6 +1,6 @@
 /**
  * ner.js — Contextual Named Entity Recognition via Transformers.js
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  * 
  * Runs Xenova/bert-base-NER (ONNX INT8, ~65MB) inside the Web Worker.
  * Catches contextual PII that regex cannot: person names, addresses, organizations.

@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     """Server configuration — loaded from environment variables with sensible defaults."""
 
     # App
-    APP_NAME: str = "PrivacyLens LLM Server"
+    APP_NAME: str = "Pecific LLM Server"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     WS_HEARTBEAT_INTERVAL: int = 30  # seconds
 
     model_config = {
-        "env_prefix": "PRIVACYLENS_",
+        "env_prefix": "PECIFIC_",
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",

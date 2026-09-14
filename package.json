@@ -1,10 +1,10 @@
 {
-  "name": "pacific-browser-agent",
+  "name": "pecific-browser-agent",
   "version": "1.0.0",
-  "description": "PrivacyLens — On-device Visual Perception for Light-weight Browser Agents (SIH PS26171)",
+  "description": "Pecific — On-device Visual Perception for Light-weight Browser Agents (SIH PS26171)",
   "type": "module",
   "scripts": {
-    "test": "node extension/workers/__tests__/regex.test.js && node extension/workers/__tests__/redaction.test.js && node extension/workers/__tests__/adversarial.test.js && node extension/workers/__tests__/dom_redaction_server.test.js && node extension/workers/__tests__/privacy_client.test.js",
+    "test": "node extension/workers/__tests__/regex.test.js && node extension/workers/__tests__/redaction.test.js && node extension/workers/__tests__/adversarial.test.js && node extension/workers/__tests__/dom_redaction_server.test.js && node extension/workers/__tests__/privacy_client.test.js && node extension/tab/__tests__/tab-manager.test.js && node extension/tab/__tests__/tab-manager-integration.test.js && node extension/workers/__tests__/vault-manager.test.js && node extension/workers/__tests__/vision-worker.test.js",
     "redact:screenshots": "node scripts/scan_and_redact_screenshots.js",
     "generate:benchmarks": "python scripts/generate_benchmark_screenshots.py"
   }

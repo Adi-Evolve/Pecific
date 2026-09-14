@@ -1,6 +1,6 @@
 /**
  * adversarial.test.js — Adversarial Edge-Case & Stress Tests
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  * Run with: node extension/workers/__tests__/adversarial.test.js
  * 
  * Verifies high recall and surgical precision against adversarial, obfuscated,

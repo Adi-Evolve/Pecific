@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PrivacyLens LLM Server — Universal Setup Script
+Pecific LLM Server — Universal Setup Script
 Works on: Google Colab, Kaggle, Local (with GPU)
 Upload this single file and run it. Everything is handled automatically.
 """
@@ -117,9 +117,9 @@ def setup_project():
     if ENV == "colab":
         base = Path("/content/server")
         if not base.exists():
-            base = Path("/content/PrivacyLens/server")
+            base = Path("/content/Pecific/server")
     elif ENV == "kaggle":
-        base = Path("/kaggle/working/PrivacyLens/server")
+        base = Path("/kaggle/working/Pecific/server")
     else:
         base = Path.cwd()
 
@@ -264,7 +264,7 @@ def setup_ngrok():
 # =============================================================================
 def main():
     print("=" * 60)
-    print("  PrivacyLens LLM Server — Setup")
+    print("  Pecific LLM Server — Setup")
     print(f"  Environment: {ENV.upper()}")
     print("=" * 60)
 

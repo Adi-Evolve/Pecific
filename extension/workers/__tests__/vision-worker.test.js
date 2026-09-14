@@ -2,12 +2,13 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
-import ort from '../../../ort-fetch/node_modules/onnxruntime-web/dist/ort.node.min.mjs';
+import ort from '../../lib/ort/ort.bundle.min.mjs';
 
 const root = new URL('../../..', import.meta.url);
 const workerSource = await fs.readFile(new URL('../vision-worker.js', import.meta.url), 'utf8');
 const posted = [];
-const ortDist = fileURLToPath(new URL('../../../ort-fetch/node_modules/onnxruntime-web/dist/', import.meta.url));
+const ortDist = fileURLToPath(new URL('../../lib/ort/', import.meta.url));
+ort.env.wasm.numThreads = 1;
 ort.env.wasm.wasmPaths = { mjs: path.join(ortDist, 'ort-wasm-simd-threaded.mjs') };
 ort.env.wasm.wasmBinary = await fs.readFile(path.join(ortDist, 'ort-wasm-simd-threaded.wasm'));
 const originalCreate = ort.InferenceSession.create;
@@ -18,6 +19,10 @@ ort.InferenceSession.create = async (modelPath, options) => {
 const context = vm.createContext({
   console,
   performance,
+  Float32Array,
+  Uint8ClampedArray,
+  Uint8Array,
+  ArrayBuffer,
   navigator: {},
   self: {
     location: { href: 'file:///extension/workers/vision-worker.js' },

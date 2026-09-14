@@ -1,4 +1,4 @@
-# PrivacyLens (Pecific) — AI Guardrails & Engineering Rules
+# Pecific — AI Guardrails & Engineering Rules
 
 ## 1. Collaboration & Module Ownership
 To avoid merge conflicts and cross-person blocking across the 6-person team:

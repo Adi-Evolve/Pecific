@@ -1,6 +1,6 @@
 """
 vision_processor.py — On-Device Vision Perception & Screen Classification
-PrivacyLens Vision Worker (R4 / Dev 3 Integration)
+Pecific Vision Worker (R4 / Dev 3 Integration)
 
 Simulates the on-device TinyViT / MobileViT + BlazeFace pipeline:
 1. Classifies screen type (login_auth, checkout_cart, email_inbox, search_results, account_settings).

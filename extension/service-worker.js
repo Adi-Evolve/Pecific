@@ -1,5 +1,5 @@
 // extension/service-worker.js
-// Integrated with Dev 3 PrivacyLens Engine (3-Line Privacy Helper + Client Vault)
+// Integrated with Dev 3 Pecific Privacy Engine (3-Line Privacy Helper + Client Vault)
 
 import { 
   sanitizeDOMSnapshot, 
@@ -26,7 +26,7 @@ import {
   isAgentTab
 } from './tab/tab-manager.js';
 
-console.log("iSIH Agent Service Worker Registered with PrivacyLens Engine.");
+console.log("iSIH Agent Service Worker Registered with Pecific Privacy Engine.");
 
 let currentSessionId = 'session_' + Date.now();
 

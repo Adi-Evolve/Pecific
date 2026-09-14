@@ -1,4 +1,4 @@
-# PrivacyLens (Pecific) — Development Phases & Milestone Deliverables
+# Pecific — Development Phases & Milestone Deliverables
 
 This document tracks the phased implementation across the project lifecycle, unifying the overarching architecture with Dev 1 (Extension Shell) and Dev 3 (Privacy Engine) deliverables.
 

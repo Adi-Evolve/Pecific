@@ -1,6 +1,6 @@
 /**
  * ocr.js — Screenshot Text Extraction via Tesseract.js
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  * 
  * Extracts visible text from screenshots so we can run Regex + NER on text
  * rendered as images (Canvas, SVG, images with baked text).

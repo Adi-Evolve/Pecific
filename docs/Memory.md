@@ -1,4 +1,4 @@
-# PrivacyLens (Pecific) — Project Memory Log
+# Pecific — Project Memory Log
 
 This running document records architectural decisions, completed work, active development items, and technical context to preserve continuity across all sessions.
 

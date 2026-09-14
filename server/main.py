@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="PrivacyLens LLM Server",
+    title="Pecific LLM Server",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -69,4 +69,4 @@ app.include_router(ws_router)
 
 @app.get("/")
 async def root():
-    return {"service": "PrivacyLens LLM Server", "status": "running"}
+    return {"service": "Pecific LLM Server", "status": "running"}

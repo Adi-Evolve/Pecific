@@ -25,7 +25,7 @@
 
 ## 1. What Is Dev 5?
 
-Dev 5 is the **Server / LLM Planning Lead** on a 6-person hackathon team building PrivacyLens — a privacy-preserving browser AI agent.
+Dev 5 is the **Server / LLM Planning Lead** on a 6-person hackathon team building Pecific — a privacy-preserving browser AI agent.
 
 **What Dev 5 owns:**
 | Folder/File | Purpose |

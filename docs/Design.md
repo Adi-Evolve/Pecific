@@ -1,4 +1,4 @@
-# PrivacyLens (Pecific) — Design System & UI Specifications
+# Pecific — Design System & UI Specifications
 
 This document defines the visual standards, color tokens, typography, and component patterns for the Pecific Browser Extension UI, interactive sidepanels, and developer verification tools.
 

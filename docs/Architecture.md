@@ -1,4 +1,4 @@
-# PrivacyLens (Pecific) — System Architecture
+# Pecific — System Architecture
 
 ## 1. High-Level System Overview
 

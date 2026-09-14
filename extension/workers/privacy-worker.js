@@ -1,6 +1,6 @@
 /**
  * privacy-worker.js — Privacy Engine Orchestrator (Web Worker)
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  * 
  * The main Web Worker entry point that orchestrates the 4-stage privacy pipeline:
  *   Stage 1: Regex PII scan (deterministic, ~5ms)

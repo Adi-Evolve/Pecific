@@ -1,17 +1,28 @@
-"""Quick smoke test against live Colab server."""
 import asyncio
+import inspect
 import json
+import os
+import sys
 import websockets
 
-WS_URL = "wss://unsoporiferous-ruinously-gertie.ngrok-free.dev/ws/browser-agent"
+DEFAULT_URL = os.environ.get(
+    "WS_URL",
+    sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:8000/ws/browser-agent"
+)
+WS_URL = DEFAULT_URL
 SESSION_ID = "session_test_smoke_001"
 
-async def smoke_test():
-    print(f"Connecting to {WS_URL}...")
+async def smoke_test(url: str = WS_URL):
+    print(f"Connecting to {url}...")
     
-    extra_headers = {"ngrok-skip-browser-warning": "true"}
+    connect_kwargs = {"open_timeout": 15}
+    sig = inspect.signature(websockets.connect)
+    if "additional_headers" in sig.parameters:
+        connect_kwargs["additional_headers"] = {"ngrok-skip-browser-warning": "true"}
+    elif "extra_headers" in sig.parameters:
+        connect_kwargs["extra_headers"] = {"ngrok-skip-browser-warning": "true"}
     
-    async with websockets.connect(WS_URL, extra_headers=extra_headers, open_timeout=15) as ws:
+    async with websockets.connect(url, **connect_kwargs) as ws:
         print("Connected!")
 
         user_query = {

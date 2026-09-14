@@ -1,6 +1,6 @@
 /**
  * privacy-client.js — High-Level Privacy Engine Client Interface
- * PrivacyLens / Pecific Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  *
  * Exposes a clean, asynchronous 3-line helper module for Dev 1 (Service Worker & Extension Shell)
  * and Dev 2 (Action Executor) to sanitize DOM snapshots, redact screenshots, query

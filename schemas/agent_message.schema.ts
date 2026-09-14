@@ -1,5 +1,5 @@
 /**
- * iSIH / PrivacyLens — Agent Message Contract (WebSocket Protocol)
+ * iSIH / Pecific — Agent Message Contract (WebSocket Protocol)
  * Shared between Extension Client (Dev 1 / Dev 3) and Server (Dev 5).
  */
 

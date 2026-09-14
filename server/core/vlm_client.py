@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 VLM_ENDPOINTS = {
     "health": "/health",
     "detect_obstacle": "/detect_obstacle",  # Dev 6 uses underscore, no trailing 's'
+    "detect_obstacles": "/detect_obstacle", # alias for compatibility
     "ground": "/ground",
     "verify_action": "/verify_action",      # Dev 6 exposes /verify_action, not /verify
+    "verify": "/verify_action",             # alias for compatibility
     "analyze": "/analyze",
 }
 

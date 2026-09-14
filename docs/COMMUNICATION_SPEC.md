@@ -1,11 +1,11 @@
-# 📡 PrivacyLens Communication Specification & Data Dictionary
+# 📡 Pecific Communication Specification & Data Dictionary
 **SIH Problem Statement PS26171: On-Device Visual Perception for Light-Weight Browser Agents**
 
 ---
 
 ## 1. Architectural Overview & Security Guarantees
 
-PrivacyLens employs a **Single-Link Orchestration Architecture** with strict on-device privacy boundaries:
+Pecific employs a **Single-Link Orchestration Architecture** with strict on-device privacy boundaries:
 1. **Chrome Extension (Browser Client)**:
    - **On-Device Vision Worker**: Runs lightweight Vision Transformer (**TinyViT / MobileViT-XXS**) and **BlazeFace** in a Web Worker (via WebGPU / ONNX Runtime Web). Produces a structured `vision_context` (`screen_type`, `layout`, `detected_regions`, `faces_detected`, `visual_pii_regions`).
    - **On-Device Privacy Worker**: Sanitizes DOM and masks PII locally into synthetic tokens (`[PAN_1]`, `[AADHAAR_1]`, `[PHONE_1]`, `[EMAIL_1]`). Blurs detected faces and visual PII regions on-device via Canvas 2D / WebGPU before anything leaves the browser.
@@ -496,4 +496,4 @@ In the evaluation rubric for **PS26171 (Smart India Hackathon)**:
 | **Latency & Resource Use** | **20%** | TinyViT runs in <30ms; Ollama generates plans in ~1s; single-link WebSocket minimizes egress overhead. |
 
 ---
-*Created for Smart India Hackathon (SIH PS26171) — PrivacyLens Autonomous Browser Agent.*
+*Created for Smart India Hackathon (SIH PS26171) — Pecific Autonomous Browser Agent.*

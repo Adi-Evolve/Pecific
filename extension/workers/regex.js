@@ -1,6 +1,6 @@
 /**
- * regex.js — Deterministic PII Scanner
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * regex.js — Deterministic PII & SPII Detection Patterns
+ * Pecific Privacy Engine (Dev 3 — R3)
  * 
  * Catches all structured/pattern-based PII with near-100% precision.
  * Includes smart exclusion rules to avoid false positives on brand names,

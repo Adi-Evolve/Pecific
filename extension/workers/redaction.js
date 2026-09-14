@@ -1,6 +1,6 @@
 /**
  * redaction.js — Token Replacement + Image Blackout Engine
- * PrivacyLens Privacy Engine (Dev 3 — R3)
+ * Pecific Privacy Engine (Dev 3 — R3)
  * 
  * Takes all PII detections from Regex + NER + OCR and performs:
  * 1. DOM Text Redaction: Replace PII strings with numbered tokens ([EMAIL_1], [NAME_1])
