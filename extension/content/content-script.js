@@ -9,6 +9,11 @@
 (function () {
   'use strict';
 
+  // Dev2 debug flag — flip to true locally when you need the sample
+  // snapshot logged on every page load. Left false by default so this
+  // doesn't spam real users' consoles once this reaches Phase 7 polish.
+  const DEV2_DEBUG = false;
+
   // dom-extractor.js and action-executor.js are loaded before this file
   // (see manifest content_scripts order) and expose window.DomExtractor /
   // window.ActionExecutor.
@@ -26,8 +31,63 @@
     extractSnapshot: () => extractor.extractSnapshot(),
   };
   window.__actionExecutor = {
-    execute: (step) => executor.execute(step),
+    execute: (step) => executeAndReport(step),
   };
+
+  /**
+   * Phase 5: runs the action, then reports the outcome back to the service
+   * worker as a STEP_RESULT message (matching StepResultPayload from
+   * agent_message.schema.ts), so both the console helper and the real
+   * EXECUTE_ACTION message path go through the same reporting logic.
+   */
+  async function executeAndReport(rawStep) {
+    let result;
+    try {
+      result = await executor.execute(rawStep);
+    } catch (err) {
+      result = {
+        step_id: rawStep?.step_id ?? rawStep?.id,
+        action: rawStep?.action,
+        success: false,
+        error: String(err),
+      };
+    }
+
+    reportStepResult(result);
+    return result;
+  }
+
+  function reportStepResult(result) {
+    // Best-effort fresh snapshot so the planner sees post-action DOM state,
+    // not just whether the action itself succeeded. Never let a snapshot
+    // failure block sending the result.
+    let domSnapshot;
+    try {
+      domSnapshot = extractor.extractSnapshot();
+    } catch (err) {
+      console.warn('[dev2] could not attach post-action snapshot to STEP_RESULT:', err);
+    }
+
+    const payload = {
+      success: result.success,
+      step_id: result.step_id,
+      action: result.action,
+      error: result.error,
+      domSnapshot,
+    };
+
+    try {
+      chrome.runtime.sendMessage({ type: 'STEP_RESULT', payload }).catch((err) => {
+        console.warn('[dev2] failed to relay STEP_RESULT to service worker:', err);
+      });
+    } catch (err) {
+      // chrome.runtime.sendMessage can throw synchronously (not just reject)
+      // when the extension context has been invalidated (e.g. extension was
+      // reloaded mid-execution). Never let this crash the caller's actual
+      // action result — reporting is best-effort, execution isn't.
+      console.warn('[dev2] could not relay STEP_RESULT, context likely invalidated:', err);
+    }
+  }
 
   /**
    * Message listener — this is how the service worker (Dev1) will eventually
@@ -47,7 +107,19 @@
     }
 
     if (message && message.type === 'EXECUTE_ACTION') {
-      executor.execute(message.step)
+      // Dev1's service worker sends { type: 'EXECUTE_ACTION', payload: msg.payload }
+      // where msg.payload is a NextStepPayload: { step?, actionId?, action? }.
+      const rawStep = message.payload?.step
+        ?? message.payload?.action
+        ?? message.payload
+        ?? message.step;
+
+      if (!rawStep) {
+        sendResponse({ ok: false, error: 'EXECUTE_ACTION received with no step data' });
+        return true;
+      }
+
+      executeAndReport(rawStep)
         .then((result) => sendResponse({ ok: true, result }))
         .catch((err) => sendResponse({ ok: false, error: String(err) }));
       return true;
@@ -56,12 +128,12 @@
 
   console.log('[dev2] content-script.js injected and ready');
 
-  // Dev-only: log a snapshot immediately so you can verify the extractor
-  // without needing to switch the DevTools console context. Remove or
-  // gate behind a debug flag before Phase 7 polish.
-  try {
-    console.log('[dev2] sample snapshot:', extractor.extractSnapshot());
-  } catch (err) {
-    console.error('[dev2] extractSnapshot failed on injection:', err);
+  // Gated behind DEV2_DEBUG — was unconditional during Phase 1-6 dev/testing.
+  if (DEV2_DEBUG) {
+    try {
+      console.log('[dev2] sample snapshot:', extractor.extractSnapshot());
+    } catch (err) {
+      console.error('[dev2] extractSnapshot failed on injection:', err);
+    }
   }
 })();

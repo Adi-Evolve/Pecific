@@ -327,6 +327,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
+        case 'STEP_RESULT': {
+          console.log('[SW] Relaying STEP_RESULT from content script:', message.payload?.step_id, message.payload?.success);
+          sendToServer({
+            type: 'STEP_RESULT',
+            session_id: currentSessionId,
+            payload: message.payload
+          });
+          sendResponse({ success: true, status: 'relayed' });
+          break;
+        }
+
         case 'GET_PRIVACY_TELEMETRY':
         case 'GET_PRIVACY_METRICS': {
           const telemetry = getPrivacyTelemetry(currentSessionId);

@@ -8,6 +8,12 @@
  * depend on other modules not yet built (vault, tab manager, vision,
  * obstacle handling) are explicit, labeled stubs — never silently faked.
  *
+ * NOTE on verify.condition grammar: the schema does not define a format
+ * for this string. Convention implemented here (needs confirmation from
+ * Dev5 / team channel):
+ *   "exists:<css selector>"   -> element must exist in DOM
+ *   "text:<substring>"        -> substring must appear in document.body.innerText
+ *   anything else             -> treated as a URL-prefix match (for URL_CHECK)
  */
 
 (function () {
@@ -29,7 +35,59 @@
         if ((el.textContent || '').trim().includes(target.text)) return el;
       }
     }
+    // Fallback: VISION-mode targeting by [x, y] coordinates (used when the
+    // planner had no reliable selector — see agent_message.schema.ts's
+    // flat "coordinates" field).
+    if (Array.isArray(target.coordinates) && target.coordinates.length === 2) {
+      const [x, y] = target.coordinates;
+      const el = document.elementFromPoint(x, y);
+      if (el) return el;
+    }
     return null;
+  }
+
+  /**
+   * Two conflicting ActionStep shapes currently exist in the codebase:
+   *  - action.schema.json (Dev5, given for Phase 2): nested "target" object,
+   *    "id", "protocol_level", "verify", "fallback", "duration_ms".
+   *  - The inline ActionStep interface in agent_message.schema.ts
+   *    (co-owned Dev1+Dev5, actually used on the WebSocket wire): flat
+   *    "selector"/"coordinates", "step_id", "risk_level"/"riskLevel",
+   *    "use_vault"/"useVault" — no verify/fallback/duration_ms at all.
+   *
+   * This adapter accepts either shape (or a mix) and normalizes to the
+   * nested shape every handler below is written against, so real traffic
+   * from Dev1's service worker doesn't silently no-op. Flagged to the team
+   * as a real contract divergence — this is a safety net, not a fix for
+   * the underlying schema drift.
+   */
+  function normalizeStep(raw) {
+    if (!raw) return raw;
+    const target = raw.target || {};
+    return {
+      id: raw.id ?? raw.step_id ?? raw.action_id,
+      action: raw.action,
+      target: {
+        selector: raw.selector ?? target.selector,
+        url: raw.url ?? target.url,
+        coordinates: raw.coordinates ?? target.coordinates,
+        text: raw.text ?? target.text,
+        tab_id: raw.tab_id ?? target.tab_id,
+        tab_purpose: raw.tab_purpose ?? target.tab_purpose,
+      },
+      value: raw.value,
+      key: raw.key,
+      vault_key: raw.vault_key,
+      execution_mode:
+        raw.execution_mode
+        || (!raw.selector && !target.selector && (raw.coordinates || target.coordinates) ? 'VISION' : 'DOM'),
+      protocol_level: raw.protocol_level ?? raw.risk_level ?? raw.riskLevel ?? 'SAFE',
+      description: raw.description,
+      verify: raw.verify, // absent on the flat schema — runVerify handles undefined safely
+      fallback: raw.fallback,
+      timeout_ms: raw.timeout_ms,
+      duration_ms: raw.duration_ms,
+    };
   }
 
   function dispatchMouseSequence(el, type) {
@@ -59,6 +117,68 @@
 
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Phase 6 — smart wait: resolves once the DOM has stopped mutating for
+   * `quietMs`, or after `timeoutMs` regardless (never hangs indefinitely).
+   * Replaces blindly guessing a fixed delay after actions that may trigger
+   * async page/AJAX changes.
+   */
+  function waitForDomSettled(timeoutMs = 3000, quietMs = 300) {
+    return new Promise((resolve) => {
+      let quietTimer = null;
+      let done = false;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        observer.disconnect();
+        clearTimeout(quietTimer);
+        clearTimeout(hardTimeout);
+        resolve();
+      };
+
+      const observer = new MutationObserver(() => {
+        clearTimeout(quietTimer);
+        quietTimer = setTimeout(finish, quietMs);
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+      // Start the quiet timer immediately in case nothing mutates at all.
+      quietTimer = setTimeout(finish, quietMs);
+      const hardTimeout = setTimeout(finish, timeoutMs);
+    });
+  }
+
+  /**
+   * Phase 6 — retry-with-backoff: retries a handler only when it failed for
+   * the specific, transient reason "target element not found" (e.g. content
+   * hasn't rendered yet). Bounded by step.timeout_ms (defaults to 5000ms,
+   * same default as action.schema.json) rather than a fixed attempt count,
+   * so it adapts to however long the caller says is acceptable.
+   */
+  async function executeWithRetry(step) {
+    const timeoutMs = step.timeout_ms || 5000;
+    const start = Date.now();
+    let attempt = 0;
+    let result;
+
+    while (true) {
+      attempt += 1;
+      result = await handlers[step.action](step);
+
+      if (result.success || result.error !== 'target element not found') {
+        return result;
+      }
+
+      const elapsed = Date.now() - start;
+      const backoff = Math.min(300 * 2 ** (attempt - 1), 2000);
+      if (elapsed + backoff >= timeoutMs) {
+        return result; // out of time — return the last failure as-is
+      }
+      await wait(backoff);
+    }
   }
 
   function notImplemented(action, reason) {
@@ -225,14 +345,25 @@
 
   // ---- entry point --------------------------------------------------------
 
-  async function execute(step) {
+  async function execute(rawStep) {
+    const step = normalizeStep(rawStep);
     const handler = handlers[step.action];
     if (!handler) {
       return { step_id: step.id, success: false, error: `unknown action: ${step.action}` };
     }
 
     const before = window.location.href;
-    const result = await handler(step);
+    const result = await executeWithRetry(step);
+
+    // Smart wait: give the DOM a chance to settle after actions that
+    // commonly trigger async re-render (AJAX, client-side routing) before
+    // we run verification — instead of guessing a fixed delay. NAVIGATE is
+    // excluded: it unloads this content script entirely, so there's nothing
+    // here left to wait on.
+    if (result.success && (step.action === 'CLICK' || step.action === 'SELECT')) {
+      await waitForDomSettled(Math.min(step.timeout_ms || 3000, 3000));
+    }
+
     const after = window.location.href;
 
     const verification = runVerify(step.verify);
