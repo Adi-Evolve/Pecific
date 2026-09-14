@@ -9,6 +9,11 @@
 (function () {
   'use strict';
 
+  // Dev2 debug flag — flip to true locally when you need the sample
+  // snapshot logged on every page load. Left false by default so this
+  // doesn't spam real users' consoles once this reaches Phase 7 polish.
+  const DEV2_DEBUG = false;
+
   // dom-extractor.js and action-executor.js are loaded before this file
   // (see manifest content_scripts order) and expose window.DomExtractor /
   // window.ActionExecutor.
@@ -123,12 +128,12 @@
 
   console.log('[dev2] content-script.js injected and ready');
 
-  // Dev-only: log a snapshot immediately so you can verify the extractor
-  // without needing to switch the DevTools console context. Remove or
-  // gate behind a debug flag before Phase 7 polish.
-  try {
-    console.log('[dev2] sample snapshot:', extractor.extractSnapshot());
-  } catch (err) {
-    console.error('[dev2] extractSnapshot failed on injection:', err);
+  // Gated behind DEV2_DEBUG — was unconditional during Phase 1-6 dev/testing.
+  if (DEV2_DEBUG) {
+    try {
+      console.log('[dev2] sample snapshot:', extractor.extractSnapshot());
+    } catch (err) {
+      console.error('[dev2] extractSnapshot failed on injection:', err);
+    }
   }
 })();
